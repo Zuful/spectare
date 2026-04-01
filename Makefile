@@ -1,9 +1,9 @@
 build:
 	cd frontend && npm install && npm run build && cd ..
-	/usr/local/go/bin/go build -o spectare .
+	go build -o spectare .
 
 dev-backend:
-	/usr/local/go/bin/go run .
+	go run .
 
 dev-frontend:
 	cd frontend && npm run dev

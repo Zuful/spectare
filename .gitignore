@@ -1,6 +1,7 @@
 spectare
 frontend/node_modules
 frontend/.next
-frontend/out
+frontend/out/*
+!frontend/out/.gitkeep
 .env
 .env.*
