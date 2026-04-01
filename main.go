@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/Zuful/spectare/internal/server"
+	"github.com/Zuful/spectare/internal/store"
 )
 
 //go:embed frontend/out
@@ -19,10 +20,16 @@ func main() {
 		fmt.Sscanf(p, "%d", &port)
 	}
 
-	addr := fmt.Sprintf(":%d", port)
-	log.Printf("Spectare listening on http://localhost%s", addr)
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "data"
+	}
 
-	srv := server.New(frontendDist)
+	s := store.New(dataDir)
+	addr := fmt.Sprintf(":%d", port)
+	log.Printf("Spectare listening on http://localhost%s  (data: %s)", addr, dataDir)
+
+	srv := server.New(frontendDist, s)
 	if err := http.ListenAndServe(addr, srv); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
