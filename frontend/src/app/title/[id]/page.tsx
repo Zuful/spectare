@@ -5,7 +5,9 @@ export function generateStaticParams() {
   return Array.from({ length: 20 }, (_, i) => ({ id: String(i + 1) }))
 }
 
-export default function TitlePage({ params }: { params: { id: string } }) {
+export default async function TitlePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+
   return (
     <div className="min-h-screen bg-[#131313]">
       <NavBar />
@@ -23,7 +25,7 @@ export default function TitlePage({ params }: { params: { id: string } }) {
           {/* Info */}
           <div className="flex-1 pt-4">
             <h1 className="font-[family-name:var(--font-manrope)] text-5xl font-black text-[#e5e2e1] tracking-tight mb-3">
-              Title {params.id}
+              Title {id}
             </h1>
             <div className="flex items-center gap-3 text-sm text-[#8e9285] mb-4">
               <span>2024</span>
@@ -39,7 +41,7 @@ export default function TitlePage({ params }: { params: { id: string } }) {
             </p>
             <div className="flex gap-4 mb-8">
               <Link
-                href={`/watch/${params.id}`}
+                href={`/watch/${id}`}
                 className="bg-[#87a96b] hover:brightness-110 text-[#1b3706] font-bold px-8 py-3 rounded-full text-sm transition-all active:scale-95 flex items-center gap-2"
               >
                 ▶ Play
