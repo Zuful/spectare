@@ -4,11 +4,21 @@ A premium VOD streaming platform — part of a video suite alongside [sub-one](h
 
 Dark, cinematic UI inspired by Netflix/Disney+/Prime Video, built around a matcha green design system ("Spectare Cinematic"). Signature feature: multi-tab video player — watch multiple titles simultaneously and switch between them like browser tabs.
 
+## Screenshots
+
+| Home | Browse |
+|------|--------|
+| ![Home](docs/screen-home.png) | ![Browse](docs/screen-browse.png) |
+
+| Player (multi-tab) | Upload |
+|--------------------|--------|
+| ![Player](docs/screen-player.png) | ![Upload](docs/screen-upload.png) |
+
 ## Requirements
 
 - **Go** 1.19+
 - **Node.js** 18+ and **npm**
-- **ffmpeg** (for HLS transcoding — coming soon)
+- **ffmpeg** + **ffprobe** (for HLS transcoding)
 
 ## Build
 
@@ -29,11 +39,13 @@ go build -o spectare .
 
 ```bash
 ./spectare
-# or with a custom port:
-PORT=9000 ./spectare
+# or with a custom port and data directory:
+PORT=9000 DATA_DIR=/var/spectare ./spectare
 ```
 
 Opens at `http://localhost:8766`.
+
+By default, video data is stored in `./data/`. Override with `DATA_DIR`.
 
 ## Development
 
@@ -52,13 +64,41 @@ The Next.js dev server proxies `/api` to `localhost:8766`.
 | Layer | Tech |
 |-------|------|
 | Frontend | Next.js 16 + Tailwind CSS v4 |
-| Player | HLS.js (streaming) |
+| Player | HLS.js (adaptive streaming) |
 | Multi-tab state | Zustand |
 | Backend | Go + chi |
-| Transcoding | ffmpeg → HLS segments *(coming soon)* |
+| Transcoding | ffmpeg → HLS segments (360p + 720p) |
 | Database | PostgreSQL *(coming soon)* |
 | Storage | Local filesystem → MinIO/S3 later |
 | Mobile | React Native / Expo *(coming soon)* |
+
+## Workflow
+
+1. Go to `/admin/upload`
+2. Drop a video file (MP4, MKV, AVI, MOV, WebM — up to 8 GB)
+3. Fill in metadata (title, year, genre, type…)
+4. Click **Upload & transcode** — ffmpeg generates 360p + 720p HLS renditions in the background
+5. The progress bar updates in real time; when done, hit **Watch now**
+6. The player loads the adaptive stream via hls.js
+
+## Data layout
+
+```
+data/
+  titles/
+    {id}/
+      meta.json          ← title metadata
+      original/
+        video.mp4        ← source file
+      hls/
+        master.m3u8      ← adaptive playlist
+        360p/
+          stream.m3u8
+          seg000.ts  …
+        720p/
+          stream.m3u8
+          seg000.ts  …
+```
 
 ## Routes
 
@@ -69,14 +109,19 @@ The Next.js dev server proxies `/api` to `localhost:8766`.
 | My List | `/my-list` |
 | Title detail | `/title/[id]` |
 | Player | `/watch/[id]` |
+| Upload | `/admin/upload` |
 
 ## API
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/titles` | List all titles |
+| `POST` | `/api/titles` | Upload video + metadata (multipart) |
 | `GET` | `/api/titles/{id}` | Get title metadata |
-| `GET` | `/api/stream/{id}/master.m3u8` | HLS stream *(not yet implemented)* |
+| `GET` | `/api/titles/{id}/status` | Transcoding progress `{status, progress}` |
+| `GET` | `/api/stream/{id}/master.m3u8` | HLS master playlist |
+| `GET` | `/api/stream/{id}/{quality}/stream.m3u8` | Variant playlist |
+| `GET` | `/api/stream/{id}/{quality}/{segment}.ts` | Video segment |
 
 ## Design system
 
