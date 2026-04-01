@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@theme {
+  /* Spectare Cinematic — design tokens */
+
+  /* Surfaces */
+  --color-surface: #131313;
+  --color-surface-dim: #131313;
+  --color-surface-bright: #3a3939;
+  --color-surface-container-lowest: #0e0e0e;
+  --color-surface-container-low: #1c1b1b;
+  --color-surface-container: #201f1f;
+  --color-surface-container-high: #2a2a2a;
+  --color-surface-container-highest: #353534;
+  --color-background: #131313;
+  --color-on-background: #e5e2e1;
+  --color-on-surface: #e5e2e1;
+  --color-on-surface-variant: #c4c8ba;
+  --color-outline: #8e9285;
+  --color-outline-variant: #43483d;
+
+  /* Matcha green primary */
+  --color-primary: #aed18f;
+  --color-primary-container: #87a96b;
+  --color-primary-fixed: #c9eea9;
+  --color-on-primary: #1b3706;
+  --color-on-primary-container: #213d0b;
+  --color-inverse-primary: #486730;
+
+  /* Secondary (neutral) */
+  --color-secondary: #c8c6c5;
+  --color-secondary-container: #474746;
+  --color-on-secondary: #313030;
+  --color-on-secondary-container: #b7b5b4;
+
+  /* Tertiary (pink — use sparingly for "Exclusive" tags) */
+  --color-tertiary: #f8b1da;
+  --color-tertiary-container: #cd8bb2;
+  --color-on-tertiary: #501e3f;
+  --color-on-tertiary-container: #562445;
+
+  /* Error */
+  --color-error: #ffb4ab;
+  --color-error-container: #93000a;
+  --color-on-error: #690005;
+  --color-on-error-container: #ffdad6;
+
+  /* Typography */
+  --font-family-display: 'Manrope', sans-serif;
+  --font-family-sans: 'Inter', sans-serif;
+  --font-family-mono: 'JetBrains Mono', monospace;
+
+  /* Radius */
+  --radius-DEFAULT: 0.125rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #131313;
+  color: #e5e2e1;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #131313; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3939; }
