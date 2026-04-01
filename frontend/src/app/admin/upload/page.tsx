@@ -24,6 +24,7 @@ export default function UploadPage() {
   const [rating, setRating] = useState('')
   const [synopsis, setSynopsis] = useState('')
   const [director, setDirector] = useState('')
+  const [doTranscode, setDoTranscode] = useState(false)
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -77,6 +78,7 @@ export default function UploadPage() {
     form.append('rating', rating)
     form.append('synopsis', synopsis)
     form.append('director', director)
+    form.append('transcode', doTranscode ? 'true' : 'false')
 
     setState({ phase: 'uploading', uploadPct: 0 })
 
@@ -90,10 +92,14 @@ export default function UploadPage() {
           }
         }
         xhr.onload = () => {
-          if (xhr.status === 202) {
+          if (xhr.status === 201 || xhr.status === 202) {
             const data = JSON.parse(xhr.responseText)
-            setState({ phase: 'transcoding', progress: 0 })
-            pollStatus(data.id)
+            if (xhr.status === 202) {
+              setState({ phase: 'transcoding', progress: 0 })
+              pollStatus(data.id)
+            } else {
+              setState({ phase: 'done', titleId: data.id })
+            }
             resolve()
           } else {
             reject(new Error(xhr.responseText || `HTTP ${xhr.status}`))
@@ -288,12 +294,26 @@ export default function UploadPage() {
               </div>
             </div>
 
+            {/* Transcode option */}
+            <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${doTranscode ? 'border-[#87a96b]/40 bg-[#87a96b]/5' : 'border-[#2a2a2a] hover:border-[#43483d]'} ${busy ? 'opacity-50 cursor-default' : ''}`}>
+              <input
+                type="checkbox"
+                checked={doTranscode}
+                onChange={(e) => !busy && setDoTranscode(e.target.checked)}
+                className="mt-0.5 accent-[#87a96b]"
+              />
+              <div>
+                <p className="text-sm font-medium text-[#e5e2e1]">Transcode to HLS <span className="text-[#8e9285] font-normal">(optional)</span></p>
+                <p className="text-xs text-[#8e9285] mt-0.5">Generates 360p + 720p adaptive streams via ffmpeg. Slower upload, better playback compatibility across devices. Without this, the file is served directly.</p>
+              </div>
+            </label>
+
             <button
               type="submit"
               disabled={!file || busy}
               className="w-full bg-[#87a96b] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1b3706] font-bold py-3 rounded-full text-sm transition-all active:scale-95"
             >
-              {busy ? 'Processing…' : 'Upload & transcode'}
+              {busy ? 'Processing…' : doTranscode ? 'Upload & transcode' : 'Upload'}
             </button>
           </form>
         )}

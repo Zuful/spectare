@@ -18,16 +18,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/Zuful/spectare/internal/scanner"
 	"github.com/Zuful/spectare/internal/store"
 	"github.com/Zuful/spectare/internal/transcode"
 )
 
 type Server struct {
-	store *store.Store
+	store    *store.Store
+	mediaDir string // optional: MEDIA_DIR env var
 }
 
-func New(embedded embed.FS, s *store.Store) http.Handler {
-	srv := &Server{store: s}
+func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
+	srv := &Server{store: s, mediaDir: mediaDir}
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -38,7 +40,10 @@ func New(embedded embed.FS, s *store.Store) http.Handler {
 		r.Post("/titles", srv.handleUpload)
 		r.Get("/titles/{id}", srv.handleGetTitle)
 		r.Get("/titles/{id}/status", srv.handleTranscodeStatus)
+		r.Post("/titles/{id}/transcode", srv.handleStartTranscode)
+		r.Post("/scan", srv.handleScan)
 		r.Get("/stream/{id}/*", srv.handleHLSFile)
+		r.Get("/stream/{id}/direct", srv.handleDirectStream)
 	})
 
 	// Static frontend
@@ -84,24 +89,77 @@ func (srv *Server) handleTranscodeStatus(w http.ResponseWriter, r *http.Request)
 	id := chi.URLParam(r, "id")
 	p := srv.store.GetProgress(id)
 	if p == nil {
-		// Not in memory — check disk
 		t, err := srv.store.Load(id)
 		if err != nil {
 			http.Error(w, "title not found", http.StatusNotFound)
 			return
 		}
-		jsonResponse(w, &store.Progress{
-			Status:   t.TranscodeStatus,
-			Progress: map[store.TranscodeStatus]float64{store.StatusReady: 100}[t.TranscodeStatus],
-		})
+		pct := 0.0
+		if t.TranscodeStatus == store.StatusReady {
+			pct = 100
+		}
+		jsonResponse(w, &store.Progress{Status: t.TranscodeStatus, Progress: pct})
 		return
 	}
 	jsonResponse(w, p)
 }
 
-// POST /api/titles — multipart upload: file + metadata fields
+// POST /api/titles/{id}/transcode — start HLS transcoding on demand
+func (srv *Server) handleStartTranscode(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	t, err := srv.store.Load(id)
+	if err != nil {
+		http.Error(w, "title not found", http.StatusNotFound)
+		return
+	}
+	if t.StreamReady {
+		jsonResponse(w, map[string]string{"status": "already_ready"})
+		return
+	}
+	if p := srv.store.GetProgress(id); p != nil && p.Status == store.StatusTranscoding {
+		jsonResponse(w, map[string]string{"status": "already_transcoding"})
+		return
+	}
+
+	// Determine input file
+	inputPath := t.DirectPath
+	if inputPath == "" {
+		// Fall back to uploaded original
+		origDir := srv.store.OriginalDir(id)
+		entries, err := os.ReadDir(origDir)
+		if err != nil || len(entries) == 0 {
+			http.Error(w, "no source file found", http.StatusBadRequest)
+			return
+		}
+		inputPath = filepath.Join(origDir, entries[0].Name())
+	}
+
+	transcode.Start(srv.store, id, inputPath)
+	w.WriteHeader(http.StatusAccepted)
+	jsonResponse(w, map[string]string{"status": "transcoding"})
+}
+
+// POST /api/scan — re-scan MEDIA_DIR
+func (srv *Server) handleScan(w http.ResponseWriter, r *http.Request) {
+	dir := srv.mediaDir
+	// Allow overriding the scan dir per-request
+	if body := r.FormValue("dir"); body != "" {
+		dir = body
+	}
+	if dir == "" {
+		http.Error(w, "no MEDIA_DIR configured (set MEDIA_DIR env var or pass dir= in body)", http.StatusBadRequest)
+		return
+	}
+	added, err := scanner.Scan(srv.store, dir)
+	if err != nil {
+		http.Error(w, "scan error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, map[string]any{"added": added, "dir": dir})
+}
+
+// POST /api/titles — multipart upload: file + metadata + optional transcode flag
 func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
-	// 8 GB max
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<30)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		http.Error(w, "failed to parse form: "+err.Error(), http.StatusBadRequest)
@@ -121,7 +179,6 @@ func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		ext = ".mp4"
 	}
 
-	// Parse metadata
 	yearStr := r.FormValue("year")
 	year, _ := strconv.Atoi(yearStr)
 	if year == 0 {
@@ -133,14 +190,7 @@ func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		titleStr = strings.TrimSuffix(fh.Filename, ext)
 	}
 
-	genreStr := r.FormValue("genre")
-	var genres []string
-	for _, g := range strings.Split(genreStr, ",") {
-		g = strings.TrimSpace(g)
-		if g != "" {
-			genres = append(genres, g)
-		}
-	}
+	genres := splitTrim(r.FormValue("genre"), ",")
 	if len(genres) == 0 {
 		genres = []string{"Uncategorised"}
 	}
@@ -149,6 +199,8 @@ func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if titleType != "movie" && titleType != "series" {
 		titleType = "movie"
 	}
+
+	doTranscode := r.FormValue("transcode") == "true" || r.FormValue("transcode") == "1"
 
 	t := &store.Title{
 		ID:              id,
@@ -162,16 +214,14 @@ func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		Cast:            splitTrim(r.FormValue("cast"), ","),
 		StreamReady:     false,
 		TranscodeStatus: store.StatusPending,
+		DirectExt:       strings.ToLower(ext),
 		CreatedAt:       time.Now(),
 	}
-
-	// Save metadata first so the title appears in the catalogue immediately
 	if err := srv.store.Save(t); err != nil {
 		http.Error(w, "failed to save metadata", http.StatusInternalServerError)
 		return
 	}
 
-	// Write original file to disk
 	origDir := srv.store.OriginalDir(id)
 	if err := os.MkdirAll(origDir, 0755); err != nil {
 		http.Error(w, "failed to create upload dir", http.StatusInternalServerError)
@@ -190,26 +240,75 @@ func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	dst.Close()
 
-	// Start async transcoding
-	transcode.Start(srv.store, id, origPath)
+	// Set direct path so the file can be played immediately
+	t.DirectPath = origPath
+	if err := srv.store.Save(t); err != nil {
+		http.Error(w, "failed to update metadata", http.StatusInternalServerError)
+		return
+	}
 
-	w.WriteHeader(http.StatusAccepted)
-	jsonResponse(w, map[string]string{"id": id, "status": "transcoding"})
+	if doTranscode {
+		transcode.Start(srv.store, id, origPath)
+		w.WriteHeader(http.StatusAccepted)
+		jsonResponse(w, map[string]string{"id": id, "status": "transcoding"})
+	} else {
+		w.WriteHeader(http.StatusCreated)
+		jsonResponse(w, map[string]string{"id": id, "status": "ready"})
+	}
 }
 
-// GET /api/stream/{id}/* — serve HLS master playlist and segments from disk
+// GET /api/stream/{id}/direct — serve source file with Range support
+func (srv *Server) handleDirectStream(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	t, err := srv.store.Load(id)
+	if err != nil {
+		http.Error(w, "title not found", http.StatusNotFound)
+		return
+	}
+	if !t.HasDirect() {
+		http.Error(w, "no direct stream available", http.StatusNotFound)
+		return
+	}
+
+	f, err := os.Open(t.DirectPath)
+	if err != nil {
+		http.Error(w, "source file not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		http.Error(w, "stat error", http.StatusInternalServerError)
+		return
+	}
+
+	mime := scanner.MIMEType(t.DirectExt)
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Accept-Ranges", "bytes")
+	// Allow Cross-Origin for the video element (dev server)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	http.ServeContent(w, r, filepath.Base(t.DirectPath), fi.ModTime(), f)
+}
+
+// GET /api/stream/{id}/* — serve HLS files from disk
 func (srv *Server) handleHLSFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	rest := chi.URLParam(r, "*")
 
-	// Prevent path traversal
 	if strings.Contains(rest, "..") {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
 
-	filePath := filepath.Join(srv.store.HLSDir(id), rest)
+	// "direct" is handled by its own route, but just in case
+	if rest == "direct" {
+		srv.handleDirectStream(w, r)
+		return
+	}
 
+	filePath := filepath.Join(srv.store.HLSDir(id), rest)
 	switch {
 	case strings.HasSuffix(rest, ".m3u8"):
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -218,7 +317,6 @@ func (srv *Server) handleHLSFile(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "video/mp2t")
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 	}
-
 	http.ServeFile(w, r, filePath)
 }
 

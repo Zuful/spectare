@@ -29,8 +29,16 @@ type Title struct {
 	Cast            []string        `json:"cast"`
 	StreamReady     bool            `json:"streamReady"`
 	TranscodeStatus TranscodeStatus `json:"transcodeStatus"`
-	CreatedAt       time.Time       `json:"createdAt"`
+	// DirectPath is the absolute path to the source video file (set when imported from MEDIA_DIR).
+	// The file is served directly without transcoding via GET /api/stream/{id}/direct.
+	DirectPath string `json:"directPath,omitempty"`
+	// DirectExt is the lowercase file extension (e.g. ".mp4") used for MIME type detection.
+	DirectExt string `json:"directExt,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
 }
+
+// HasDirect reports whether this title can be played directly without HLS transcoding.
+func (t *Title) HasDirect() bool { return t.DirectPath != "" }
 
 // Progress is the in-memory transcoding progress for a title.
 type Progress struct {

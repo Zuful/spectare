@@ -1,4 +1,5 @@
 import NavBar from '@/components/NavBar'
+import TranscodeButton from '@/components/TranscodeButton'
 import Link from 'next/link'
 
 export function generateStaticParams() {
@@ -49,6 +50,7 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
               <button className="border border-[#43483d] hover:border-[#87a96b]/50 text-[#e5e2e1] font-medium px-8 py-3 rounded-full text-sm transition-all active:scale-95">
                 + My List
               </button>
+              <TranscodeButton titleId={id} />
             </div>
             <p className="text-xs text-[#8e9285] uppercase tracking-widest mb-1">Director</p>
             <p className="text-sm text-[#c4c8ba] mb-4">Christopher Nolan</p>
