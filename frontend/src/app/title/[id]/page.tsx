@@ -13,17 +13,26 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
     <div className="min-h-screen bg-[#131313]">
       <NavBar />
 
-      {/* Backdrop */}
-      <div className="relative h-96 bg-gradient-to-b from-[#0e0e0e] to-[#131313]">
-        <div className="absolute inset-0 bg-gradient-to-t from-[#131313] to-transparent" />
+      {/* Backdrop hero */}
+      <div className="relative h-[60vh] bg-[#0e0e0e] overflow-hidden">
+        {/* Backdrop image — hides gracefully if absent */}
+        <img
+          src={`/api/titles/${id}/thumbnail/backdrop`}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover opacity-60"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+        />
+        {/* Gradient overlays */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#131313]/90 via-[#131313]/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#131313] via-transparent to-transparent" />
       </div>
 
-      <main className="max-w-screen-2xl mx-auto px-8 -mt-32 relative z-10 pb-16">
+      <main className="max-w-screen-2xl mx-auto px-8 -mt-48 relative z-10 pb-16">
         <div className="flex gap-10">
           {/* Poster */}
-          <div className="flex-shrink-0 w-52 aspect-[2/3] bg-[#1c1b1b] rounded-lg overflow-hidden">
+          <div className="flex-shrink-0 w-44 aspect-[2/3] bg-[#1c1b1b] rounded-xl overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/5">
             <img
-              src={`/api/titles/${id}/thumbnail`}
+              src={`/api/titles/${id}/thumbnail/poster`}
               alt=""
               className="w-full h-full object-cover"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}

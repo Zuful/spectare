@@ -3,6 +3,7 @@ import { useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
 import TagInput from '@/components/TagInput'
+import ThumbnailZone from '@/components/ThumbnailZone'
 
 type UploadState =
   | { phase: 'idle' }
@@ -25,9 +26,9 @@ export default function UploadPage() {
   const [rating, setRating] = useState('')
   const [synopsis, setSynopsis] = useState('')
   const [director, setDirector] = useState('')
-  const [thumbnail, setThumbnail] = useState<File | null>(null)
-  const [thumbPreview, setThumbPreview] = useState<string | null>(null)
-  const thumbRef = useRef<HTMLInputElement>(null)
+  const [thumbCard, setThumbCard] = useState<{ file: File; preview: string } | null>(null)
+  const [thumbPoster, setThumbPoster] = useState<{ file: File; preview: string } | null>(null)
+  const [thumbBackdrop, setThumbBackdrop] = useState<{ file: File; preview: string } | null>(null)
   const [doTranscode, setDoTranscode] = useState(false)
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
@@ -75,7 +76,9 @@ export default function UploadPage() {
 
     const form = new FormData()
     form.append('file', file)
-    if (thumbnail) form.append('thumbnail', thumbnail)
+    if (thumbCard) form.append('card', thumbCard.file)
+    if (thumbPoster) form.append('poster', thumbPoster.file)
+    if (thumbBackdrop) form.append('backdrop', thumbBackdrop.file)
     form.append('title', title || file.name)
     form.append('year', year)
     form.append('type', titleType)
@@ -141,7 +144,7 @@ export default function UploadPage() {
                 ▶ Watch now
               </Link>
               <button
-                onClick={() => { setFile(null); setTitle(''); setGenres([]); setThumbnail(null); setThumbPreview(null); setState({ phase: 'idle' }) }}
+                onClick={() => { setFile(null); setTitle(''); setGenres([]); setThumbCard(null); setThumbPoster(null); setThumbBackdrop(null); setState({ phase: 'idle' }) }}
                 className="border border-[#43483d] text-[#e5e2e1] px-8 py-3 rounded-full text-sm hover:border-[#87a96b]/50 transition-all"
               >
                 Add another
@@ -291,49 +294,41 @@ export default function UploadPage() {
                 />
               </div>
 
-              {/* Thumbnail */}
+              {/* Thumbnails */}
               <div className="col-span-2">
-                <label className="block text-xs text-[#8e9285] uppercase tracking-widest mb-1.5">Thumbnail <span className="normal-case text-[#454545]">(optional)</span></label>
-                <div className="flex gap-3 items-start">
-                  <div
-                    className={`relative w-40 aspect-video rounded-lg overflow-hidden border-2 border-dashed flex-shrink-0 flex items-center justify-center cursor-pointer transition-colors ${
-                      thumbPreview ? 'border-[#87a96b]/40' : 'border-[#2a2a2a] hover:border-[#43483d]'
-                    } ${busy ? 'opacity-50 pointer-events-none' : ''}`}
-                    onClick={() => thumbRef.current?.click()}
-                  >
-                    {thumbPreview ? (
-                      <img src={thumbPreview} alt="thumbnail preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-2xl text-[#353534]">🖼</span>
-                    )}
-                    <input
-                      ref={thumbRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={busy}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0]
-                        if (!f) return
-                        setThumbnail(f)
-                        setThumbPreview(URL.createObjectURL(f))
-                      }}
-                    />
-                  </div>
-                  <div className="flex-1 text-xs text-[#8e9285] pt-1 leading-relaxed">
-                    <p>Cliquer pour sélectionner une image.</p>
-                    <p className="text-[#454545] mt-1">JPG, PNG, WebP — affiché sur les cartes et la page titre.</p>
-                    {thumbnail && (
-                      <button
-                        type="button"
-                        onClick={() => { setThumbnail(null); setThumbPreview(null) }}
-                        className="mt-2 text-[#454545] hover:text-red-400 transition-colors"
-                      >
-                        × Supprimer
-                      </button>
-                    )}
-                  </div>
+                <label className="block text-xs text-[#8e9285] uppercase tracking-widest mb-3">
+                  Visuels <span className="normal-case text-[#454545]">(optionnels)</span>
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  <ThumbnailZone
+                    label="Card — 16:9"
+                    hint="Vignette dans Browse"
+                    aspectClass="aspect-video"
+                    preview={thumbCard?.preview ?? null}
+                    onChange={(f, p) => setThumbCard({ file: f, preview: p })}
+                    onClear={() => setThumbCard(null)}
+                    disabled={busy}
+                  />
+                  <ThumbnailZone
+                    label="Poster — 2:3"
+                    hint="Affiche verticale (page titre)"
+                    aspectClass="aspect-[2/3]"
+                    preview={thumbPoster?.preview ?? null}
+                    onChange={(f, p) => setThumbPoster({ file: f, preview: p })}
+                    onClear={() => setThumbPoster(null)}
+                    disabled={busy}
+                  />
+                  <ThumbnailZone
+                    label="Backdrop — large"
+                    hint="Fond hero (page titre)"
+                    aspectClass="aspect-[21/9]"
+                    preview={thumbBackdrop?.preview ?? null}
+                    onChange={(f, p) => setThumbBackdrop({ file: f, preview: p })}
+                    onClear={() => setThumbBackdrop(null)}
+                    disabled={busy}
+                  />
                 </div>
+                <p className="text-[10px] text-[#454545] mt-2">Un preview 30s est généré automatiquement. JPG, PNG, WebP.</p>
               </div>
             </div>
 

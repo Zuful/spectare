@@ -41,7 +41,10 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		r.Get("/titles/{id}", srv.handleGetTitle)
 		r.Get("/titles/{id}/status", srv.handleTranscodeStatus)
 		r.Post("/titles/{id}/transcode", srv.handleStartTranscode)
-		r.Get("/titles/{id}/thumbnail", srv.handleThumbnail)
+		r.Get("/titles/{id}/thumbnail", srv.handleThumbnail)          // backward compat → card
+		r.Get("/titles/{id}/thumbnail/{variant}", srv.handleThumbnail) // card | poster | backdrop
+		r.Get("/titles/{id}/preview", srv.handlePreview)
+		r.Post("/titles/{id}/preview", srv.handleUploadPreview)
 		r.Post("/scan", srv.handleScan)
 		r.Get("/stream/{id}/*", srv.handleHLSFile)
 		r.Get("/stream/{id}/direct", srv.handleDirectStream)
@@ -283,17 +286,29 @@ func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	dst.Close()
 
-	// Save optional thumbnail
-	if th, thHeader, err := r.FormFile("thumbnail"); err == nil {
-		defer th.Close()
+	// Save thumbnail variants: card (16:9), poster (2:3), backdrop (wide)
+	thumbDir := filepath.Join(srv.store.TitleDir(id), "thumbnails")
+	os.MkdirAll(thumbDir, 0755)
+	for _, variant := range []string{"card", "poster", "backdrop"} {
+		th, thHeader, err := r.FormFile(variant)
+		if err != nil {
+			// Also accept legacy "thumbnail" field as card
+			if variant == "card" {
+				th, thHeader, err = r.FormFile("thumbnail")
+			}
+			if err != nil {
+				continue
+			}
+		}
 		thExt := strings.ToLower(filepath.Ext(thHeader.Filename))
 		if thExt == "" {
 			thExt = ".jpg"
 		}
-		if thDst, err := os.Create(filepath.Join(srv.store.TitleDir(id), "thumbnail"+thExt)); err == nil {
-			io.Copy(thDst, th)
-			thDst.Close()
+		if dst, err := os.Create(filepath.Join(thumbDir, variant+thExt)); err == nil {
+			io.Copy(dst, th)
+			dst.Close()
 		}
+		th.Close()
 	}
 
 	// Set direct path so the file can be played immediately
@@ -302,6 +317,9 @@ func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to update metadata", http.StatusInternalServerError)
 		return
 	}
+
+	// Auto-generate a 30s preview clip (async, does not block the response)
+	transcode.GeneratePreview(srv.store.TitleDir(id), origPath)
 
 	if doTranscode {
 		transcode.Start(srv.store, id, origPath)
@@ -376,26 +394,98 @@ func (srv *Server) handleHLSFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filePath)
 }
 
-// GET /api/titles/{id}/thumbnail — serve the title's thumbnail image
+// GET /api/titles/{id}/thumbnail[/{variant}]
+// variant: card (16:9), poster (2:3), backdrop (wide). Defaults to "card".
+// Falls back: poster→card, backdrop→card, card→legacy thumbnail.*
 func (srv *Server) handleThumbnail(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	dir := srv.store.TitleDir(id)
-	for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp", ".avif"} {
-		path := filepath.Join(dir, "thumbnail"+ext)
-		if f, err := os.Open(path); err == nil {
-			defer f.Close()
-			fi, _ := f.Stat()
-			mimeTypes := map[string]string{
-				".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-				".png": "image/png", ".webp": "image/webp", ".avif": "image/avif",
-			}
-			w.Header().Set("Content-Type", mimeTypes[ext])
-			w.Header().Set("Cache-Control", "public, max-age=86400")
-			http.ServeContent(w, r, fi.Name(), fi.ModTime(), f)
-			return
-		}
+	variant := chi.URLParam(r, "variant")
+	if variant == "" {
+		variant = "card"
+	}
+	switch variant {
+	case "card", "poster", "backdrop":
+	default:
+		http.NotFound(w, r)
+		return
+	}
+
+	titleDir := srv.store.TitleDir(id)
+	// Try thumbnails/{variant}.* first
+	thumbDir := filepath.Join(titleDir, "thumbnails")
+	if serveImageFile(w, r, thumbDir, variant) {
+		return
+	}
+	// Fallback: non-card variants fall back to card
+	if variant != "card" && serveImageFile(w, r, thumbDir, "card") {
+		return
+	}
+	// Legacy: single thumbnail.* at title root (before multi-variant support)
+	if serveImageFile(w, r, titleDir, "thumbnail") {
+		return
 	}
 	http.NotFound(w, r)
+}
+
+func serveImageFile(w http.ResponseWriter, r *http.Request, dir, base string) bool {
+	mimeTypes := map[string]string{
+		".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+		".png": "image/png", ".webp": "image/webp", ".avif": "image/avif",
+	}
+	for ext, mime := range mimeTypes {
+		f, err := os.Open(filepath.Join(dir, base+ext))
+		if err != nil {
+			continue
+		}
+		defer f.Close()
+		fi, _ := f.Stat()
+		w.Header().Set("Content-Type", mime)
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeContent(w, r, fi.Name(), fi.ModTime(), f)
+		return true
+	}
+	return false
+}
+
+// GET /api/titles/{id}/preview — serve the short preview clip
+func (srv *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	path := filepath.Join(srv.store.TitleDir(id), "preview.mp4")
+	f, err := os.Open(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	fi, _ := f.Stat()
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	http.ServeContent(w, r, "preview.mp4", fi.ModTime(), f)
+}
+
+// POST /api/titles/{id}/preview — replace the auto-generated preview with a manual upload
+func (srv *Server) handleUploadPreview(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := srv.store.Load(id); err != nil {
+		http.Error(w, "title not found", http.StatusNotFound)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 500<<20)
+	f, _, err := r.FormFile("preview")
+	if err != nil {
+		http.Error(w, "missing preview field", http.StatusBadRequest)
+		return
+	}
+	defer f.Close()
+	dst, err := os.Create(filepath.Join(srv.store.TitleDir(id), "preview.mp4"))
+	if err != nil {
+		http.Error(w, "failed to write preview", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+	io.Copy(dst, f)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
