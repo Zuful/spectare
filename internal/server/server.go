@@ -60,15 +60,43 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		return r
 	}
 	fileServer := http.FileServer(http.FS(sub))
-	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		if path == "" {
-			path = "index.html"
-		}
-		if _, err := fs.Stat(sub, path); err != nil {
-			r.URL.Path = "/"
-		}
+	serve := func(w http.ResponseWriter, r *http.Request, path string) {
+		r.URL.Path = "/" + path
 		fileServer.ServeHTTP(w, r)
+	}
+	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+		// Normalise: strip leading slash, add trailing index.html for dirs
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" || strings.HasSuffix(path, "/") {
+			path = strings.TrimSuffix(path, "/")
+			if path == "" {
+				path = "index.html"
+			} else {
+				path = path + "/index.html"
+			}
+		}
+
+		// Exact file exists → serve it directly
+		if _, err := fs.Stat(sub, path); err == nil {
+			r.URL.Path = "/" + path
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// Dynamic route fallback: for /watch/{id} and /title/{id}, serve the
+		// pre-generated template page (id "1") so the client-side router can
+		// render the correct component using the real URL.
+		parts := strings.SplitN(strings.TrimSuffix(path, "/index.html"), "/", 3)
+		if len(parts) == 2 {
+			template := parts[0] + "/1/index.html"
+			if _, err := fs.Stat(sub, template); err == nil {
+				serve(w, r, template)
+				return
+			}
+		}
+
+		// Final fallback: root index.html (SPA home)
+		serve(w, r, "index.html")
 	})
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		fileServer.ServeHTTP(w, r)

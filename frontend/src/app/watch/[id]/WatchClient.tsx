@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import Hls from 'hls.js'
+import { usePathname } from 'next/navigation'
 import { usePlayerTabs } from '@/store/playerTabs'
 import { streamUrl } from '@/lib/api'
 
@@ -16,7 +17,12 @@ function formatTime(sec: number): string {
 
 type StreamMode = 'hls' | 'direct' | 'none'
 
-export default function WatchClient({ id }: { id: string }) {
+export default function WatchClient({ id: staticId }: { id: string }) {
+  // Use the actual URL path to get the real ID — the static export may serve a
+  // template page (e.g. /watch/1/) for any unknown hex ID, so we must read the
+  // real ID from the live URL rather than the baked-in prop.
+  const pathname = usePathname() // e.g. "/watch/abc123def456"
+  const id = pathname.split('/').filter(Boolean)[1] ?? staticId
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
