@@ -50,13 +50,27 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 	sub, err := fs.Sub(embedded, "frontend/out")
 	if err != nil {
 		r.Get("/*", placeholderHandler)
+		r.Get("/", placeholderHandler)
+		return r
+	}
+	// Verify the frontend was actually built (index.html must exist)
+	if _, err := fs.Stat(sub, "index.html"); err != nil {
+		r.Get("/*", placeholderHandler)
+		r.Get("/", placeholderHandler)
 		return r
 	}
 	fileServer := http.FileServer(http.FS(sub))
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := fs.Stat(sub, strings.TrimPrefix(r.URL.Path, "/")); err != nil {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+		if _, err := fs.Stat(sub, path); err != nil {
 			r.URL.Path = "/"
 		}
+		fileServer.ServeHTTP(w, r)
+	})
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		fileServer.ServeHTTP(w, r)
 	})
 
