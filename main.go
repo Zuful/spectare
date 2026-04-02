@@ -12,7 +12,7 @@ import (
 	"github.com/Zuful/spectare/internal/store"
 )
 
-//go:embed frontend/out
+//go:embed all:frontend/out
 var frontendDist embed.FS
 
 func main() {
