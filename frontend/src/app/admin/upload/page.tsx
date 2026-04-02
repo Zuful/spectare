@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
+import TagInput from '@/components/TagInput'
 
 type UploadState =
   | { phase: 'idle' }
@@ -20,7 +21,7 @@ export default function UploadPage() {
   const [title, setTitle] = useState('')
   const [year, setYear] = useState(String(new Date().getFullYear()))
   const [titleType, setTitleType] = useState<'movie' | 'series'>('movie')
-  const [genre, setGenre] = useState('')
+  const [genres, setGenres] = useState<string[]>([])
   const [rating, setRating] = useState('')
   const [synopsis, setSynopsis] = useState('')
   const [director, setDirector] = useState('')
@@ -74,7 +75,7 @@ export default function UploadPage() {
     form.append('title', title || file.name)
     form.append('year', year)
     form.append('type', titleType)
-    form.append('genre', genre)
+    form.append('genre', genres.join(','))
     form.append('rating', rating)
     form.append('synopsis', synopsis)
     form.append('director', director)
@@ -111,7 +112,7 @@ export default function UploadPage() {
     } catch (err) {
       setState({ phase: 'error', message: String(err) })
     }
-  }, [file, title, year, titleType, genre, rating, synopsis, director, pollStatus])
+  }, [file, title, year, titleType, genres, rating, synopsis, director, pollStatus])
 
   const busy = state.phase === 'uploading' || state.phase === 'transcoding'
 
@@ -136,7 +137,7 @@ export default function UploadPage() {
                 ▶ Watch now
               </Link>
               <button
-                onClick={() => { setFile(null); setTitle(''); setState({ phase: 'idle' }) }}
+                onClick={() => { setFile(null); setTitle(''); setGenres([]); setState({ phase: 'idle' }) }}
                 className="border border-[#43483d] text-[#e5e2e1] px-8 py-3 rounded-full text-sm hover:border-[#87a96b]/50 transition-all"
               >
                 Add another
@@ -250,14 +251,7 @@ export default function UploadPage() {
               </div>
               <div>
                 <label className="block text-xs text-[#8e9285] uppercase tracking-widest mb-1.5">Genre</label>
-                <input
-                  type="text"
-                  value={genre}
-                  onChange={(e) => setGenre(e.target.value)}
-                  disabled={busy}
-                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50"
-                  placeholder="Drama, Sci-Fi"
-                />
+                <TagInput tags={genres} onChange={setGenres} disabled={busy} />
               </div>
               <div>
                 <label className="block text-xs text-[#8e9285] uppercase tracking-widest mb-1.5">Rating</label>
