@@ -142,6 +142,13 @@ export default function BrowsePage() {
                 href={`/title/${t.id}`}
                 className="group relative aspect-video bg-[#1c1b1b] rounded-lg overflow-hidden hover:scale-105 transition-transform duration-300 hover:ring-1 hover:ring-[#87a96b]/30"
               >
+                {/* Thumbnail */}
+                <img
+                  src={`/api/titles/${t.id}/thumbnail`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
 

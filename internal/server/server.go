@@ -41,6 +41,7 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		r.Get("/titles/{id}", srv.handleGetTitle)
 		r.Get("/titles/{id}/status", srv.handleTranscodeStatus)
 		r.Post("/titles/{id}/transcode", srv.handleStartTranscode)
+		r.Get("/titles/{id}/thumbnail", srv.handleThumbnail)
 		r.Post("/scan", srv.handleScan)
 		r.Get("/stream/{id}/*", srv.handleHLSFile)
 		r.Get("/stream/{id}/direct", srv.handleDirectStream)
@@ -282,6 +283,19 @@ func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	dst.Close()
 
+	// Save optional thumbnail
+	if th, thHeader, err := r.FormFile("thumbnail"); err == nil {
+		defer th.Close()
+		thExt := strings.ToLower(filepath.Ext(thHeader.Filename))
+		if thExt == "" {
+			thExt = ".jpg"
+		}
+		if thDst, err := os.Create(filepath.Join(srv.store.TitleDir(id), "thumbnail"+thExt)); err == nil {
+			io.Copy(thDst, th)
+			thDst.Close()
+		}
+	}
+
 	// Set direct path so the file can be played immediately
 	t.DirectPath = origPath
 	if err := srv.store.Save(t); err != nil {
@@ -360,6 +374,28 @@ func (srv *Server) handleHLSFile(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 	}
 	http.ServeFile(w, r, filePath)
+}
+
+// GET /api/titles/{id}/thumbnail — serve the title's thumbnail image
+func (srv *Server) handleThumbnail(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	dir := srv.store.TitleDir(id)
+	for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp", ".avif"} {
+		path := filepath.Join(dir, "thumbnail"+ext)
+		if f, err := os.Open(path); err == nil {
+			defer f.Close()
+			fi, _ := f.Stat()
+			mimeTypes := map[string]string{
+				".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+				".png": "image/png", ".webp": "image/webp", ".avif": "image/avif",
+			}
+			w.Header().Set("Content-Type", mimeTypes[ext])
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			http.ServeContent(w, r, fi.Name(), fi.ModTime(), f)
+			return
+		}
+	}
+	http.NotFound(w, r)
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

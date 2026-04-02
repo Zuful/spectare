@@ -25,6 +25,9 @@ export default function UploadPage() {
   const [rating, setRating] = useState('')
   const [synopsis, setSynopsis] = useState('')
   const [director, setDirector] = useState('')
+  const [thumbnail, setThumbnail] = useState<File | null>(null)
+  const [thumbPreview, setThumbPreview] = useState<string | null>(null)
+  const thumbRef = useRef<HTMLInputElement>(null)
   const [doTranscode, setDoTranscode] = useState(false)
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
@@ -72,6 +75,7 @@ export default function UploadPage() {
 
     const form = new FormData()
     form.append('file', file)
+    if (thumbnail) form.append('thumbnail', thumbnail)
     form.append('title', title || file.name)
     form.append('year', year)
     form.append('type', titleType)
@@ -137,7 +141,7 @@ export default function UploadPage() {
                 ▶ Watch now
               </Link>
               <button
-                onClick={() => { setFile(null); setTitle(''); setGenres([]); setState({ phase: 'idle' }) }}
+                onClick={() => { setFile(null); setTitle(''); setGenres([]); setThumbnail(null); setThumbPreview(null); setState({ phase: 'idle' }) }}
                 className="border border-[#43483d] text-[#e5e2e1] px-8 py-3 rounded-full text-sm hover:border-[#87a96b]/50 transition-all"
               >
                 Add another
@@ -285,6 +289,51 @@ export default function UploadPage() {
                   className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50 resize-none"
                   placeholder="A brief description…"
                 />
+              </div>
+
+              {/* Thumbnail */}
+              <div className="col-span-2">
+                <label className="block text-xs text-[#8e9285] uppercase tracking-widest mb-1.5">Thumbnail <span className="normal-case text-[#454545]">(optional)</span></label>
+                <div className="flex gap-3 items-start">
+                  <div
+                    className={`relative w-40 aspect-video rounded-lg overflow-hidden border-2 border-dashed flex-shrink-0 flex items-center justify-center cursor-pointer transition-colors ${
+                      thumbPreview ? 'border-[#87a96b]/40' : 'border-[#2a2a2a] hover:border-[#43483d]'
+                    } ${busy ? 'opacity-50 pointer-events-none' : ''}`}
+                    onClick={() => thumbRef.current?.click()}
+                  >
+                    {thumbPreview ? (
+                      <img src={thumbPreview} alt="thumbnail preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-2xl text-[#353534]">🖼</span>
+                    )}
+                    <input
+                      ref={thumbRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={busy}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (!f) return
+                        setThumbnail(f)
+                        setThumbPreview(URL.createObjectURL(f))
+                      }}
+                    />
+                  </div>
+                  <div className="flex-1 text-xs text-[#8e9285] pt-1 leading-relaxed">
+                    <p>Cliquer pour sélectionner une image.</p>
+                    <p className="text-[#454545] mt-1">JPG, PNG, WebP — affiché sur les cartes et la page titre.</p>
+                    {thumbnail && (
+                      <button
+                        type="button"
+                        onClick={() => { setThumbnail(null); setThumbPreview(null) }}
+                        className="mt-2 text-[#454545] hover:text-red-400 transition-colors"
+                      >
+                        × Supprimer
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 

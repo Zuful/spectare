@@ -21,7 +21,14 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
       <main className="max-w-screen-2xl mx-auto px-8 -mt-32 relative z-10 pb-16">
         <div className="flex gap-10">
           {/* Poster */}
-          <div className="flex-shrink-0 w-52 aspect-[2/3] bg-[#1c1b1b] rounded-lg" />
+          <div className="flex-shrink-0 w-52 aspect-[2/3] bg-[#1c1b1b] rounded-lg overflow-hidden">
+            <img
+              src={`/api/titles/${id}/thumbnail`}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          </div>
 
           {/* Info */}
           <div className="flex-1 pt-4">
