@@ -39,6 +39,7 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		r.Get("/titles", srv.handleListTitles)
 		r.Post("/titles", srv.handleUpload)
 		r.Get("/titles/{id}", srv.handleGetTitle)
+		r.Put("/titles/{id}", srv.handleUpdateTitle)
 		r.Get("/titles/{id}/status", srv.handleTranscodeStatus)
 		r.Post("/titles/{id}/transcode", srv.handleStartTranscode)
 		r.Get("/titles/{id}/thumbnail", srv.handleThumbnail)          // backward compat → card
@@ -87,14 +88,16 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 			return
 		}
 
-		// Dynamic route fallback: for /watch/{id} and /title/{id}, serve the
-		// pre-generated template page (id "1") so the client-side router can
-		// render the correct component using the real URL.
-		parts := strings.SplitN(strings.TrimSuffix(path, "/index.html"), "/", 3)
-		if len(parts) == 2 {
-			template := parts[0] + "/1/index.html"
-			if _, err := fs.Stat(sub, template); err == nil {
-				serve(w, r, template)
+		// Dynamic route fallback: serve the pre-generated template (id "1") for
+		// any dynamic route whose ID is a runtime hex string rather than a
+		// static integer. Walk up the path replacing the dynamic segment with "1".
+		// Handles: /watch/{id}, /title/{id}, /admin/titles/{id}/edit, etc.
+		base := strings.TrimSuffix(path, "/index.html")
+		parts := strings.Split(base, "/")
+		for i := len(parts) - 1; i >= 1; i-- {
+			candidate := strings.Join(append(parts[:i], append([]string{"1"}, parts[i+1:]...)...), "/") + "/index.html"
+			if _, err := fs.Stat(sub, candidate); err == nil {
+				serve(w, r, candidate)
 				return
 			}
 		}
@@ -125,6 +128,78 @@ func (srv *Server) handleGetTitle(w http.ResponseWriter, r *http.Request) {
 	t, err := srv.store.Load(id)
 	if err != nil {
 		http.Error(w, "title not found", http.StatusNotFound)
+		return
+	}
+	jsonResponse(w, t)
+}
+
+// PUT /api/titles/{id} — update metadata and optionally replace thumbnails
+func (srv *Server) handleUpdateTitle(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	t, err := srv.store.Load(id)
+	if err != nil {
+		http.Error(w, "title not found", http.StatusNotFound)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 100<<20)
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		http.Error(w, "failed to parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if v := r.FormValue("title"); v != "" {
+		t.Title = v
+	}
+	if v := r.FormValue("year"); v != "" {
+		if y, err := strconv.Atoi(v); err == nil && y > 0 {
+			t.Year = y
+		}
+	}
+	if v := r.FormValue("type"); v == "movie" || v == "series" {
+		t.Type = v
+	}
+	if v := r.FormValue("genre"); v != "" {
+		t.Genre = splitTrim(v, ",")
+	}
+	if v := r.FormValue("rating"); r.Form.Has("rating") {
+		t.Rating = v
+	}
+	if v := r.FormValue("synopsis"); r.Form.Has("synopsis") {
+		t.Synopsis = v
+	}
+	if v := r.FormValue("director"); r.Form.Has("director") {
+		t.Director = v
+	}
+	if v := r.FormValue("cast"); r.Form.Has("cast") {
+		t.Cast = splitTrim(v, ",")
+	}
+
+	// Optional thumbnail replacements
+	thumbDir := filepath.Join(srv.store.TitleDir(id), "thumbnails")
+	os.MkdirAll(thumbDir, 0755)
+	for _, variant := range []string{"card", "poster", "backdrop"} {
+		th, thHeader, err := r.FormFile(variant)
+		if err != nil {
+			continue
+		}
+		thExt := strings.ToLower(filepath.Ext(thHeader.Filename))
+		if thExt == "" {
+			thExt = ".jpg"
+		}
+		// Remove old variants of this slot before writing new one
+		for _, oldExt := range []string{".jpg", ".jpeg", ".png", ".webp", ".avif"} {
+			os.Remove(filepath.Join(thumbDir, variant+oldExt))
+		}
+		if dst, err := os.Create(filepath.Join(thumbDir, variant+thExt)); err == nil {
+			io.Copy(dst, th)
+			dst.Close()
+		}
+		th.Close()
+	}
+
+	if err := srv.store.Save(t); err != nil {
+		http.Error(w, "failed to save", http.StatusInternalServerError)
 		return
 	}
 	jsonResponse(w, t)

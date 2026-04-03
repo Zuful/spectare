@@ -67,6 +67,13 @@ export default async function TitlePage({ params }: { params: Promise<{ id: stri
                 + My List
               </button>
               <TranscodeButton titleId={id} />
+              <Link
+                href={`/admin/titles/${id}/edit`}
+                className="border border-[#43483d] hover:border-[#87a96b]/50 text-[#8e9285] hover:text-[#e5e2e1] font-medium px-5 py-3 rounded-full text-sm transition-all active:scale-95 flex items-center gap-1.5"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit
+              </Link>
             </div>
             <p className="text-xs text-[#8e9285] uppercase tracking-widest mb-1">Director</p>
             <p className="text-sm text-[#c4c8ba] mb-4">Christopher Nolan</p>
