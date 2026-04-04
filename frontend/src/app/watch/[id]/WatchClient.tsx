@@ -40,6 +40,8 @@ export default function WatchClient({ id: staticId }: { id: string }) {
   const [subtitles, setSubtitles] = useState<SubTrack[]>([])
   const [activeSub, setActiveSub] = useState<string | null>(null) // lang code or null
   const [showSubMenu, setShowSubMenu] = useState(false)
+  const [castAvailable, setCastAvailable] = useState(false)
+  const [casting, setCasting] = useState(false)
 
   const { tabs, activeTabId, openTab, closeTab, setActiveTab, updateCurrentTime } = usePlayerTabs()
 
@@ -72,6 +74,56 @@ export default function WatchClient({ id: staticId }: { id: string }) {
       .then((tracks: SubTrack[]) => setSubtitles(tracks))
       .catch(() => {})
   }, [id])
+
+  // Load Google Cast SDK (Chrome/Edge only — no-op in other browsers)
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any
+    w.__onGCastApiAvailable = (isAvailable: boolean) => {
+      if (!isAvailable) return
+      w.cast.framework.CastContext.getInstance().setOptions({
+        receiverApplicationId: w.chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+        autoJoinPolicy: w.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+      })
+      w.cast.framework.CastContext.getInstance().addEventListener(
+        w.cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+        (e: { sessionState: string }) => {
+          setCasting(e.sessionState === 'SESSION_STARTED' || e.sessionState === 'SESSION_RESUMED')
+        }
+      )
+      setCastAvailable(true)
+    }
+    const script = document.createElement('script')
+    script.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1'
+    document.head.appendChild(script)
+    return () => { try { document.head.removeChild(script) } catch {} }
+  }, [])
+
+  const handleCast = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any
+    const context = w.cast.framework.CastContext.getInstance()
+    if (casting) {
+      context.endCurrentSession(true)
+      return
+    }
+    const baseUrl = window.location.origin
+    const mediaUrl = streamMode === 'hls'
+      ? `${baseUrl}/api/stream/${activeTitleId}/master.m3u8`
+      : `${baseUrl}/api/stream/${activeTitleId}/direct`
+    const contentType = streamMode === 'hls' ? 'application/x-mpegURL' : 'video/mp4'
+
+    context.requestSession().then(() => {
+      const session = context.getCurrentSession()
+      if (!session) return
+      const mediaInfo = new w.chrome.cast.media.MediaInfo(mediaUrl, contentType)
+      const meta = new w.chrome.cast.media.MovieMediaMetadata()
+      meta.title = titleName
+      meta.images = [{ url: `${baseUrl}/api/titles/${activeTitleId}/thumbnail/backdrop` }]
+      mediaInfo.metadata = meta
+      session.loadMedia(new w.chrome.cast.media.LoadRequest(mediaInfo))
+    }).catch(() => {})
+  }, [casting, streamMode, activeTitleId, titleName])
 
   // Sync active subtitle track on the <video> element
   useEffect(() => {
@@ -329,7 +381,18 @@ export default function WatchClient({ id: staticId }: { id: string }) {
                 </div>
               )}
             </div>
-            <button className="text-xs text-[#8e9285] hover:text-[#e5e2e1] transition-colors font-mono">HD</button>
+            {castAvailable && streamMode !== 'none' && (
+              <button
+                title={casting ? 'Stop casting' : 'Cast to TV'}
+                className={`transition-colors ${casting ? 'text-[#87a96b]' : 'text-[#8e9285] hover:text-[#e5e2e1]'}`}
+                onClick={(e) => { e.stopPropagation(); handleCast() }}
+              >
+                {/* Google Cast icon */}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2C12 14.36 7.03 9 1 10zm20-7H3C1.9 3 1 3.9 1 5v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+                </svg>
+              </button>
+            )}
             <button className="text-[#8e9285] hover:text-[#e5e2e1] transition-colors"
               onClick={(e) => { e.stopPropagation(); handleToggleFullscreen() }}>
               {fullscreen
