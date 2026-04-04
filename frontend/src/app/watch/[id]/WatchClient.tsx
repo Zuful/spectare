@@ -16,6 +16,7 @@ function formatTime(sec: number): string {
 }
 
 type StreamMode = 'hls' | 'direct' | 'none'
+type SubTrack = { lang: string; label: string; file: string }
 
 export default function WatchClient({ id: staticId }: { id: string }) {
   // Use the actual URL path to get the real ID — the static export may serve a
@@ -36,10 +37,13 @@ export default function WatchClient({ id: staticId }: { id: string }) {
   const [streamMode, setStreamMode] = useState<StreamMode>('none')
   const [controlsVisible, setControlsVisible] = useState(true)
   const [titleName, setTitleName] = useState(`Title ${id}`)
+  const [subtitles, setSubtitles] = useState<SubTrack[]>([])
+  const [activeSub, setActiveSub] = useState<string | null>(null) // lang code or null
+  const [showSubMenu, setShowSubMenu] = useState(false)
 
   const { tabs, activeTabId, openTab, closeTab, setActiveTab, updateCurrentTime } = usePlayerTabs()
 
-  // Resolve stream mode from API on mount
+  // Resolve stream mode and subtitles from API on mount
   useEffect(() => {
     fetch(`/api/titles/${id}`)
       .then((r) => r.ok ? r.json() : null)
@@ -60,6 +64,24 @@ export default function WatchClient({ id: staticId }: { id: string }) {
         setStreamMode('none')
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load subtitle tracks
+  useEffect(() => {
+    fetch(`/api/titles/${id}/subtitles`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((tracks: SubTrack[]) => setSubtitles(tracks))
+      .catch(() => {})
+  }, [id])
+
+  // Sync active subtitle track on the <video> element
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    for (let i = 0; i < video.textTracks.length; i++) {
+      const t = video.textTracks[i]
+      t.mode = activeSub && t.language === activeSub ? 'showing' : 'hidden'
+    }
+  }, [activeSub])
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const activeTitleId = activeTab?.titleId ?? id
@@ -181,6 +203,11 @@ export default function WatchClient({ id: staticId }: { id: string }) {
     closeTab(tabId)
   }, [closeTab])
 
+  const handleContainerClick = useCallback(() => {
+    if (showSubMenu) { setShowSubMenu(false); return }
+    handleTogglePlay()
+  }, [showSubMenu, handleTogglePlay])
+
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
   const overlayHidden = playing && !controlsVisible
 
@@ -208,7 +235,7 @@ export default function WatchClient({ id: staticId }: { id: string }) {
       </div>
 
       {/* Video area */}
-      <div className="flex-1 bg-[#0a0a0a] relative overflow-hidden" onClick={handleTogglePlay}>
+      <div className="flex-1 bg-[#0a0a0a] relative overflow-hidden" onClick={handleContainerClick}>
         <video
           ref={videoRef}
           className="w-full h-full object-contain"
@@ -221,7 +248,19 @@ export default function WatchClient({ id: staticId }: { id: string }) {
           onPlay={() => { setPlaying(true); showControls() }}
           onPause={() => { setPlaying(false); setControlsVisible(true) }}
           playsInline
-        />
+          crossOrigin="anonymous"
+        >
+          {subtitles.map((s) => (
+            <track
+              key={s.lang}
+              kind="subtitles"
+              src={`/api/titles/${id}/subtitles/${s.lang}.vtt`}
+              srcLang={s.lang}
+              label={s.label}
+              default={s.lang === activeSub}
+            />
+          ))}
+        </video>
 
         {/* Unavailable overlay */}
         {streamMode === 'none' && (
@@ -261,7 +300,35 @@ export default function WatchClient({ id: staticId }: { id: string }) {
                 : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/><path d="M15.54,8.46a5,5,0,0,1,0,7.07"/><path d="M19.07,4.93a10,10,0,0,1,0,14.14"/></svg>
               }
             </button>
-            <button className="text-xs text-[#8e9285] hover:text-[#e5e2e1] transition-colors font-mono">CC</button>
+            {/* CC / subtitle selector */}
+            <div className="relative">
+              <button
+                className={`text-xs font-mono transition-colors px-1 rounded ${activeSub ? 'text-[#87a96b] bg-[#87a96b]/10' : subtitles.length > 0 ? 'text-[#8e9285] hover:text-[#e5e2e1]' : 'text-[#353534] cursor-default'}`}
+                onClick={(e) => { e.stopPropagation(); if (subtitles.length > 0) setShowSubMenu((v) => !v) }}
+                title={subtitles.length === 0 ? 'No subtitles available' : 'Subtitles'}
+              >
+                CC
+              </button>
+              {showSubMenu && (
+                <div className="absolute bottom-8 right-0 bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg overflow-hidden shadow-xl min-w-[130px] z-50">
+                  <button
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${!activeSub ? 'text-[#87a96b]' : 'text-[#8e9285] hover:text-[#e5e2e1] hover:bg-[#2a2a2a]'}`}
+                    onClick={(e) => { e.stopPropagation(); setActiveSub(null); setShowSubMenu(false) }}
+                  >
+                    Off
+                  </button>
+                  {subtitles.map((s) => (
+                    <button
+                      key={s.lang}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors ${activeSub === s.lang ? 'text-[#87a96b]' : 'text-[#8e9285] hover:text-[#e5e2e1] hover:bg-[#2a2a2a]'}`}
+                      onClick={(e) => { e.stopPropagation(); setActiveSub(s.lang); setShowSubMenu(false) }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button className="text-xs text-[#8e9285] hover:text-[#e5e2e1] transition-colors font-mono">HD</button>
             <button className="text-[#8e9285] hover:text-[#e5e2e1] transition-colors"
               onClick={(e) => { e.stopPropagation(); handleToggleFullscreen() }}>

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import NavBar from '@/components/NavBar'
 import TagInput from '@/components/TagInput'
 import ThumbnailZone from '@/components/ThumbnailZone'
+import SubtitleManager from '@/components/SubtitleManager'
 
 type Title = {
   id: string; title: string; year: number; genre: string[]
@@ -198,6 +199,11 @@ export default function EditTitleClient({ id: staticId }: { id: string }) {
                   disabled={busy} />
               </div>
             </div>
+          </div>
+
+          {/* Subtitle management — live, outside the save form flow */}
+          <div className="border-t border-[#2a2a2a] pt-6">
+            <SubtitleManager titleId={id} />
           </div>
 
           <button type="submit" disabled={busy}

@@ -46,6 +46,10 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		r.Get("/titles/{id}/thumbnail/{variant}", srv.handleThumbnail) // card | poster | backdrop
 		r.Get("/titles/{id}/preview", srv.handlePreview)
 		r.Post("/titles/{id}/preview", srv.handleUploadPreview)
+		r.Get("/titles/{id}/subtitles", srv.handleListSubtitles)
+		r.Post("/titles/{id}/subtitles", srv.handleUploadSubtitle)
+		r.Get("/titles/{id}/subtitles/{file}", srv.handleServeSubtitle)
+		r.Delete("/titles/{id}/subtitles/{file}", srv.handleDeleteSubtitle)
 		r.Post("/scan", srv.handleScan)
 		r.Get("/stream/{id}/*", srv.handleHLSFile)
 		r.Get("/stream/{id}/direct", srv.handleDirectStream)
@@ -561,6 +565,162 @@ func (srv *Server) handleUploadPreview(w http.ResponseWriter, r *http.Request) {
 	defer dst.Close()
 	io.Copy(dst, f)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ── subtitles ────────────────────────────────────────────────────────────────
+
+type subtitleTrack struct {
+	Lang  string `json:"lang"`
+	Label string `json:"label"`
+	File  string `json:"file"` // basename, e.g. "en.srt"
+}
+
+var langLabels = map[string]string{
+	"en": "English", "fr": "Français", "es": "Español", "de": "Deutsch",
+	"it": "Italiano", "pt": "Português", "nl": "Nederlands", "ru": "Русский",
+	"ja": "日本語", "ko": "한국어", "zh": "中文", "ar": "العربية",
+}
+
+func subtitleDir(titleDir string) string { return filepath.Join(titleDir, "subtitles") }
+
+// GET /api/titles/{id}/subtitles
+func (srv *Server) handleListSubtitles(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	dir := subtitleDir(srv.store.TitleDir(id))
+	entries, err := os.ReadDir(dir)
+	tracks := []subtitleTrack{}
+	if err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			ext := strings.ToLower(filepath.Ext(name))
+			if ext != ".srt" && ext != ".vtt" {
+				continue
+			}
+			lang := strings.TrimSuffix(name, ext)
+			label, ok := langLabels[lang]
+			if !ok {
+				label = strings.ToUpper(lang)
+			}
+			tracks = append(tracks, subtitleTrack{Lang: lang, Label: label, File: name})
+		}
+	}
+	jsonResponse(w, tracks)
+}
+
+// GET /api/titles/{id}/subtitles/{file} — serve SRT converted to WebVTT, or VTT as-is
+func (srv *Server) handleServeSubtitle(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	file := chi.URLParam(r, "file")
+	if strings.Contains(file, "..") || strings.Contains(file, "/") {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	dir := subtitleDir(srv.store.TitleDir(id))
+
+	// Try the exact filename first, then with .srt extension
+	path := filepath.Join(dir, file)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		// Try swapping .vtt request to .srt on disk
+		alt := strings.TrimSuffix(path, filepath.Ext(path)) + ".srt"
+		raw, err = os.ReadFile(alt)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+
+	// Convert SRT → VTT on the fly
+	if strings.HasSuffix(strings.ToLower(path), ".srt") ||
+		strings.HasSuffix(strings.ToLower(file), ".vtt") && strings.HasSuffix(strings.ToLower(path), ".srt") {
+		w.Write([]byte(srtToVTT(string(raw))))
+		return
+	}
+	w.Write(raw)
+}
+
+// POST /api/titles/{id}/subtitles — upload a subtitle file
+// Form fields: file (SRT or VTT), lang (e.g. "en")
+func (srv *Server) handleUploadSubtitle(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := srv.store.Load(id); err != nil {
+		http.Error(w, "title not found", http.StatusNotFound)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
+	f, fh, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file field", http.StatusBadRequest)
+		return
+	}
+	defer f.Close()
+
+	lang := strings.TrimSpace(r.FormValue("lang"))
+	if lang == "" {
+		lang = strings.ToLower(strings.TrimSuffix(fh.Filename, filepath.Ext(fh.Filename)))
+	}
+	if lang == "" {
+		lang = "und"
+	}
+	ext := strings.ToLower(filepath.Ext(fh.Filename))
+	if ext != ".srt" && ext != ".vtt" {
+		http.Error(w, "only .srt and .vtt files are accepted", http.StatusBadRequest)
+		return
+	}
+
+	dir := subtitleDir(srv.store.TitleDir(id))
+	os.MkdirAll(dir, 0755)
+	dst, err := os.Create(filepath.Join(dir, lang+ext))
+	if err != nil {
+		http.Error(w, "failed to save file", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+	io.Copy(dst, f)
+
+	label, ok := langLabels[lang]
+	if !ok {
+		label = strings.ToUpper(lang)
+	}
+	w.WriteHeader(http.StatusCreated)
+	jsonResponse(w, subtitleTrack{Lang: lang, Label: label, File: lang + ext})
+}
+
+// DELETE /api/titles/{id}/subtitles/{file}
+func (srv *Server) handleDeleteSubtitle(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	file := chi.URLParam(r, "file")
+	if strings.Contains(file, "..") || strings.Contains(file, "/") {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	path := filepath.Join(subtitleDir(srv.store.TitleDir(id)), file)
+	if err := os.Remove(path); err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func srtToVTT(srt string) string {
+	var b strings.Builder
+	b.WriteString("WEBVTT\n\n")
+	for _, line := range strings.Split(srt, "\n") {
+		// Convert SRT timestamps: 00:00:01,000 --> 00:00:02,000
+		// to VTT timestamps:      00:00:01.000 --> 00:00:02.000
+		if strings.Contains(line, " --> ") {
+			line = strings.ReplaceAll(line, ",", ".")
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
