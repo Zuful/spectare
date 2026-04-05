@@ -5,6 +5,7 @@ import Hls from 'hls.js'
 import { usePathname } from 'next/navigation'
 import { usePlayerTabs } from '@/store/playerTabs'
 import { streamUrl } from '@/lib/api'
+import { saveProgress, getProgress, markWatched } from '@/lib/watchProgress'
 
 function formatTime(sec: number): string {
   if (!isFinite(sec) || sec < 0) return '0:00'
@@ -28,6 +29,7 @@ export default function WatchClient({ id: staticId }: { id: string }) {
   const hlsRef = useRef<Hls | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSaveRef = useRef(0)
 
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -138,6 +140,22 @@ export default function WatchClient({ id: staticId }: { id: string }) {
     }
   }, [activeSub])
 
+  // Save progress and auto-mark watched
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const handler = () => {
+      const now = Date.now()
+      if (now - lastSaveRef.current < 5000) return
+      lastSaveRef.current = now
+      if (video.duration > 0) saveProgress(id, video.currentTime, video.duration)
+      // Auto-mark watched at 90%
+      if (video.currentTime / video.duration >= 0.9) markWatched(id)
+    }
+    video.addEventListener('timeupdate', handler)
+    return () => video.removeEventListener('timeupdate', handler)
+  }, [id, streamMode]) // re-attach after stream mode changes
+
   // Load stream whenever active title or stream mode changes
   useEffect(() => {
     const video = videoRef.current
@@ -152,7 +170,8 @@ export default function WatchClient({ id: staticId }: { id: string }) {
     setCurrentTime(0)
     setDuration(0)
 
-    const savedTime = tabs.find((t) => t.titleId === activeTitleId)?.currentTime ?? 0
+    const tabTime = tabs.find((t) => t.titleId === activeTitleId)?.currentTime ?? 0
+    const savedTime = tabTime > 0 ? tabTime : (getProgress(activeTitleId)?.currentTime ?? 0)
 
     if (streamMode === 'hls') {
       const url = streamUrl(activeTitleId)

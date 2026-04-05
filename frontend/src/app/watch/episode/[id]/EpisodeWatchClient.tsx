@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Hls from 'hls.js'
 import { usePathname } from 'next/navigation'
 import { usePlayerTabs } from '@/store/playerTabs'
+import { saveProgress, getProgress, markWatched } from '@/lib/watchProgress'
 
 function formatTime(sec: number): string {
   if (!isFinite(sec) || sec < 0) return '0:00'
@@ -16,6 +17,7 @@ function formatTime(sec: number): string {
 
 type StreamMode = 'hls' | 'direct' | 'none'
 type SubTrack = { lang: string; label: string; file: string }
+type Episode = { id: string; seriesId: string; season: number; number: number; title: string; synopsis: string; streamReady: boolean; transcodeStatus: string; directPath?: string }
 
 type EpisodeData = {
   id: string
@@ -38,6 +40,8 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
   const hlsRef = useRef<Hls | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSaveRef = useRef(0)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -54,6 +58,8 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
   const [showSubMenu, setShowSubMenu] = useState(false)
   const [castAvailable, setCastAvailable] = useState(false)
   const [casting, setCasting] = useState(false)
+  const [nextEpisode, setNextEpisode] = useState<{id: string; title: string; season: number; number: number} | null>(null)
+  const [nextCountdown, setNextCountdown] = useState(0)
 
   const { tabs, activeTabId, openTab, closeTab, setActiveTab, updateCurrentTime } = usePlayerTabs()
 
@@ -92,6 +98,20 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
         } else {
           setStreamMode('none')
         }
+
+        // Fetch series episodes to find the next one
+        const seriesId = data.seriesId
+        fetch(`/api/titles/${seriesId}/episodes`)
+          .then(r => r.ok ? r.json() : [])
+          .then((episodes: Episode[]) => {
+            const sorted = [...episodes].sort((a, b) => a.season - b.season || a.number - b.number)
+            const idx = sorted.findIndex(e => e.id === id)
+            if (idx >= 0 && idx < sorted.length - 1) {
+              const next = sorted[idx + 1]
+              setNextEpisode({ id: next.id, title: next.title, season: next.season, number: next.number })
+            }
+          })
+          .catch(() => {})
       })
       .catch(() => {
         openTab({ id, titleId: id, title: `Episode ${id}`, thumbnail: '' })
@@ -184,7 +204,8 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
     setCurrentTime(0)
     setDuration(0)
 
-    const savedTime = tabs.find((t) => t.titleId === activeEpisodeId)?.currentTime ?? 0
+    const tabTime = tabs.find((t) => t.titleId === activeEpisodeId)?.currentTime ?? 0
+    const savedTime = tabTime > 0 ? tabTime : (getProgress(activeEpisodeId)?.currentTime ?? 0)
 
     if (streamMode === 'hls') {
       const url = `/api/stream/episodes/${activeEpisodeId}/master.m3u8`
@@ -214,6 +235,47 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
       if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null }
     }
   }, [activeEpisodeId, streamMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Save progress and auto-mark watched
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const handler = () => {
+      const now = Date.now()
+      if (now - lastSaveRef.current < 5000) return
+      lastSaveRef.current = now
+      if (video.duration > 0) saveProgress(id, video.currentTime, video.duration)
+      // Auto-mark watched at 90%
+      if (video.currentTime / video.duration >= 0.9) markWatched(id)
+    }
+    video.addEventListener('timeupdate', handler)
+    return () => video.removeEventListener('timeupdate', handler)
+  }, [id, streamMode]) // re-attach after stream mode changes
+
+  // Auto-play next episode on video end
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !nextEpisode) return
+    const handler = () => {
+      markWatched(id)
+      setNextCountdown(5)
+    }
+    video.addEventListener('ended', handler)
+    return () => video.removeEventListener('ended', handler)
+  }, [id, nextEpisode])
+
+  // Countdown timer for next episode
+  useEffect(() => {
+    if (nextCountdown <= 0) return
+    if (nextCountdown === 1) {
+      if (typeof window !== 'undefined' && nextEpisode) {
+        window.location.href = `/watch/episode/${nextEpisode.id}`
+      }
+      return
+    }
+    countdownRef.current = setInterval(() => setNextCountdown(n => n - 1), 1000)
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current) }
+  }, [nextCountdown, nextEpisode])
 
   // Controls auto-hide
   const showControls = useCallback(() => {
@@ -357,6 +419,30 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
               <div className="text-6xl mb-4">▶</div>
               <p className="text-sm font-medium text-[#454545]">No stream available</p>
               <p className="text-xs mt-1">Go to the title page to add a source or transcode</p>
+            </div>
+          </div>
+        )}
+
+        {/* Next episode overlay */}
+        {nextCountdown > 0 && nextEpisode && (
+          <div className="absolute bottom-24 right-8 z-20 bg-[#1c1b1b]/95 border border-[#2a2a2a] rounded-xl p-4 w-72 shadow-2xl">
+            <p className="text-[10px] text-[#8e9285] uppercase tracking-widest mb-1">Next Episode in {nextCountdown}s</p>
+            <p className="text-sm font-bold text-[#e5e2e1] mb-1">
+              S{String(nextEpisode.season).padStart(2,'0')}E{String(nextEpisode.number).padStart(2,'0')} — {nextEpisode.title}
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => { if (nextEpisode) window.location.href = `/watch/episode/${nextEpisode.id}` }}
+                className="flex-1 bg-[var(--color-accent)] text-[#1b3706] text-xs font-bold py-2 rounded-lg"
+              >
+                Play Now
+              </button>
+              <button
+                onClick={() => { setNextCountdown(0); if (countdownRef.current) clearInterval(countdownRef.current) }}
+                className="flex-1 border border-[#43483d] text-[#8e9285] text-xs py-2 rounded-lg hover:text-[#e5e2e1]"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}

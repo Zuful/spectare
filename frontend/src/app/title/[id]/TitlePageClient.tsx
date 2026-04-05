@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
 import TranscodeButton from '@/components/TranscodeButton'
+import { isWatched, getProgress } from '@/lib/watchProgress'
 
 type TitleData = {
   id: string; title: string; year: number; genre: string[]
@@ -26,22 +27,41 @@ type Episode = {
 
 function EpisodeItem({ ep }: { ep: Episode }) {
   const label = `S${String(ep.season).padStart(2, '0')}E${String(ep.number).padStart(2, '0')}`
+  const [watched, setWatched] = useState(false)
+  const [pct, setPct] = useState(0)
+
+  useEffect(() => {
+    setWatched(isWatched(ep.id))
+    const p = getProgress(ep.id)
+    if (p && p.duration > 0) setPct((p.currentTime / p.duration) * 100)
+  }, [ep.id])
+
   return (
     <div className="flex gap-4 p-3 rounded-lg bg-[#1a1a1a] hover:bg-[#1e1e1e] border border-[#2a2a2a] hover:border-[#3a3a3a] transition-all">
       {/* Thumbnail */}
-      <div className="flex-shrink-0 w-32 aspect-video bg-[#0e0e0e] rounded overflow-hidden">
+      <div className="flex-shrink-0 w-32 aspect-video bg-[#0e0e0e] rounded overflow-hidden relative">
         <img
           src={`/api/episodes/${ep.id}/thumbnail`}
           alt=""
           className="w-full h-full object-cover"
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
         />
+        {pct > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/20">
+            <div className="h-full bg-[var(--color-accent)]" style={{ width: `${pct}%` }} />
+          </div>
+        )}
       </div>
       {/* Info */}
       <div className="flex-1 min-w-0 py-0.5">
         <div className="flex items-start justify-between gap-3 mb-1">
           <div className="min-w-0">
             <span className="text-xs font-mono text-[var(--color-accent)] mr-2">{label}</span>
+            {watched && (
+              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[var(--color-accent)] mr-1.5 align-middle">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+            )}
             <span className="text-sm font-semibold text-[#e5e2e1]">{ep.title}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">

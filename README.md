@@ -50,6 +50,7 @@ Opens at `http://localhost:8766`.
 | `PORT` | `8766` | HTTP listen port |
 | `DATA_DIR` | `./data` | Where metadata, thumbnails, HLS segments and the database are stored |
 | `MEDIA_DIR` | *(unset)* | Folder to scan for videos on startup (supports removable media) |
+| `TMDB_API_KEY` | *(unset)* | [TMDB API key](https://www.themoviedb.org/settings/api) — enables automatic metadata enrichment |
 
 If `MEDIA_DIR` is set, Spectare scans it at boot and registers all video files — no upload needed. You can rescan at any time via `POST /api/scan`. Videos on external drives are served directly; if the drive is disconnected, the stream returns 404 until reconnected.
 
@@ -79,6 +80,8 @@ The scanner also detects **companion files** placed alongside each video and imp
 | `{videoname}.en.srt`, `{videoname}.fr.vtt`, … | Subtitles (alternate naming) |
 
 Companion files are copied into `DATA_DIR` at scan time, so they remain accessible even if the source drive is later disconnected.
+
+If `TMDB_API_KEY` is set, newly scanned titles are automatically enriched in the background: synopsis, genres, director, poster and backdrop images are fetched from TMDB for any fields that are missing. You can also trigger enrichment manually via `POST /api/titles/{id}/fetch-metadata`.
 
 ## Development
 
@@ -134,6 +137,19 @@ All video files are scanned on startup. Titles and years are parsed from filenam
 - **Genre filters** — chips generated dynamically from actual genres in the library
 - **Type filter** — Movies / Series
 - **Search** — across title, director and genres
+- **Progress bars** — cards show a thin accent bar indicating how far you've watched
+- **Watched badges** — green checkmark on titles you've finished
+
+## Player features
+
+- **Resume playback** — position is saved every 5 s and restored on next visit
+- **Continue Watching row** — home page shows titles/episodes in progress (1–89% watched)
+- **Auto-mark watched** — at 90% playback the title is marked as watched automatically
+- **Auto-play next episode** — at the end of a series episode, a 5 s countdown queues the next one (cancelable)
+- **Multi-tab** — open multiple titles simultaneously and switch between them like browser tabs
+- **Subtitles** — SRT and VTT, with live SRT→VTT conversion; upload per title
+- **Chromecast** — Cast button appears in Chrome/Edge when a Cast device is available
+- **Keyboard shortcuts** — Space/K play-pause, F fullscreen, M mute, ← → seek ±10 s
 
 ## Data layout
 
@@ -205,6 +221,7 @@ Titles and episodes sourced via `MEDIA_DIR` have no `original/` folder — the s
 | `GET` | `/api/stream/{id}/master.m3u8` | HLS master playlist |
 | `GET` | `/api/stream/{id}/{quality}/stream.m3u8` | Variant playlist |
 | `GET` | `/api/stream/{id}/{quality}/{segment}.ts` | Video segment |
+| `POST` | `/api/titles/{id}/fetch-metadata` | Fetch missing metadata + thumbnails from TMDB |
 | `POST` | `/api/scan` | Rescan `MEDIA_DIR` (or pass `dir=` in body to override) |
 
 #### Episodes

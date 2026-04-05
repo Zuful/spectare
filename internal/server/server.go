@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,16 +21,18 @@ import (
 
 	"github.com/Zuful/spectare/internal/scanner"
 	"github.com/Zuful/spectare/internal/store"
+	tmdbclient "github.com/Zuful/spectare/internal/tmdb"
 	"github.com/Zuful/spectare/internal/transcode"
 )
 
 type Server struct {
-	store    *store.Store
-	mediaDir string // optional: MEDIA_DIR env var
+	store      *store.Store
+	mediaDir   string // optional: MEDIA_DIR env var
+	tmdbClient *tmdbclient.Client
 }
 
-func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
-	srv := &Server{store: s, mediaDir: mediaDir}
+func New(embedded embed.FS, s *store.Store, mediaDir string, tmdb *tmdbclient.Client) http.Handler {
+	srv := &Server{store: s, mediaDir: mediaDir, tmdbClient: tmdb}
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -61,6 +64,7 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		r.Post("/episodes/{id}/transcode", srv.handleStartEpisodeTranscode)
 		r.Get("/stream/episodes/{id}/*", srv.handleEpisodeHLSFile)
 		r.Get("/stream/episodes/{id}/direct", srv.handleEpisodeDirectStream)
+		r.Post("/titles/{id}/fetch-metadata", srv.handleFetchMetadata)
 		r.Post("/scan", srv.handleScan)
 		r.Get("/stream/{id}/*", srv.handleHLSFile)
 		r.Get("/stream/{id}/direct", srv.handleDirectStream)
@@ -321,12 +325,105 @@ func (srv *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no MEDIA_DIR configured (set MEDIA_DIR env var or pass dir= in body)", http.StatusBadRequest)
 		return
 	}
-	added, err := scanner.Scan(srv.store, dir)
+	added, err := scanner.Scan(srv.store, dir, srv.tmdbClient)
 	if err != nil {
 		http.Error(w, "scan error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	jsonResponse(w, map[string]any{"added": added, "dir": dir})
+}
+
+// POST /api/titles/{id}/fetch-metadata — fetch missing metadata from TMDB
+func (srv *Server) handleFetchMetadata(w http.ResponseWriter, r *http.Request) {
+	if srv.tmdbClient == nil {
+		http.Error(w, "TMDB_API_KEY not configured", http.StatusNotImplemented)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	t, err := srv.store.Load(id)
+	if err != nil {
+		http.Error(w, "title not found", http.StatusNotFound)
+		return
+	}
+
+	result, genres, err := srv.tmdbClient.FetchMetadata(t.Title, t.Type, t.Year)
+	if err != nil {
+		http.Error(w, "TMDB lookup failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	updated := false
+
+	// Fill in missing synopsis
+	if t.Synopsis == "" && result.Overview != "" {
+		t.Synopsis = result.Overview
+		updated = true
+	}
+
+	// Fill in missing year
+	if t.Year == 0 && result.Year() > 0 {
+		t.Year = result.Year()
+		updated = true
+	}
+
+	// Fill in missing genres
+	if len(t.Genre) == 0 || (len(t.Genre) == 1 && t.Genre[0] == "Uncategorised") {
+		if len(genres) > 0 {
+			t.Genre = genres
+			updated = true
+		}
+	}
+
+	// Fill in missing director
+	if t.Director == "" {
+		if dir := srv.tmdbClient.Director(result.ID, result.MediaType); dir != "" {
+			t.Director = dir
+			updated = true
+		}
+	}
+
+	// Download missing thumbnails
+	thumbDir := filepath.Join(srv.store.TitleDir(id), "thumbnails")
+	os.MkdirAll(thumbDir, 0755)
+
+	posterGlob, _ := filepath.Glob(filepath.Join(thumbDir, "poster.*"))
+	if len(posterGlob) == 0 && result.PosterPath != "" {
+		dest := filepath.Join(thumbDir, "poster.jpg")
+		if err := srv.tmdbClient.DownloadImage(result.PosterPath, "w342", dest); err != nil {
+			log.Printf("TMDB: poster download failed: %v", err)
+		}
+	}
+
+	backdropGlob, _ := filepath.Glob(filepath.Join(thumbDir, "backdrop.*"))
+	if len(backdropGlob) == 0 && result.BackdropPath != "" {
+		dest := filepath.Join(thumbDir, "backdrop.jpg")
+		if err := srv.tmdbClient.DownloadImage(result.BackdropPath, "w1280", dest); err != nil {
+			log.Printf("TMDB: backdrop download failed: %v", err)
+		}
+	}
+
+	// Also try card thumbnail from backdrop if card is missing
+	cardGlob, _ := filepath.Glob(filepath.Join(thumbDir, "card.*"))
+	if len(cardGlob) == 0 && result.BackdropPath != "" {
+		dest := filepath.Join(thumbDir, "card.jpg")
+		if err := srv.tmdbClient.DownloadImage(result.BackdropPath, "w780", dest); err != nil {
+			log.Printf("TMDB: card download failed: %v", err)
+		}
+	}
+
+	if updated {
+		if err := srv.store.Save(t); err != nil {
+			http.Error(w, "failed to save", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	jsonResponse(w, map[string]any{
+		"updated": updated,
+		"title":   t.Title,
+		"tmdbId":  result.ID,
+		"genres":  genres,
+	})
 }
 
 // POST /api/titles — multipart upload: file + metadata + optional transcode flag

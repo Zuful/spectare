@@ -10,6 +10,7 @@ import (
 	"github.com/Zuful/spectare/internal/scanner"
 	"github.com/Zuful/spectare/internal/server"
 	"github.com/Zuful/spectare/internal/store"
+	"github.com/Zuful/spectare/internal/tmdb"
 )
 
 //go:embed all:frontend/out
@@ -30,10 +31,15 @@ func main() {
 
 	s := store.New(dataDir)
 
+	tmdbClient := tmdb.NewFromEnv()
+	if tmdbClient != nil {
+		log.Printf("TMDB metadata enrichment enabled")
+	}
+
 	// Auto-scan MEDIA_DIR on startup
 	if mediaDir != "" {
 		log.Printf("Scanning MEDIA_DIR: %s", mediaDir)
-		n, err := scanner.Scan(s, mediaDir)
+		n, err := scanner.Scan(s, mediaDir, tmdbClient)
 		if err != nil {
 			log.Printf("Warning: scan error: %v", err)
 		} else {
@@ -47,7 +53,7 @@ func main() {
 		log.Printf("Media dir: %s  (POST /api/scan to rescan)", mediaDir)
 	}
 
-	srv := server.New(frontendDist, s, mediaDir)
+	srv := server.New(frontendDist, s, mediaDir, tmdbClient)
 	if err := http.ListenAndServe(addr, srv); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

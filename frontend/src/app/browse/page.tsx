@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
+import { getProgress, isWatched } from '@/lib/watchProgress'
 
 type Title = {
   id: string
@@ -29,6 +30,14 @@ function TitleCard({ title: t, layout }: CardProps) {
   const [expanded, setExpanded] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [pct, setPct] = useState(0)
+  const [watched, setWatched] = useState(false)
+
+  useEffect(() => {
+    const p = getProgress(t.id)
+    if (p && p.duration > 0) setPct((p.currentTime / p.duration) * 100)
+    setWatched(isWatched(t.id))
+  }, [t.id])
 
   const thumbVariant = layout === 'portrait' ? 'poster' : 'card'
   const aspectClass = layout === 'portrait' ? 'aspect-[2/3]' : 'aspect-video'
@@ -86,6 +95,16 @@ function TitleCard({ title: t, layout }: CardProps) {
             ))}
           </div>
         </div>
+        {pct > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/20">
+            <div className="h-full bg-[var(--color-accent)]" style={{ width: `${pct}%` }} />
+          </div>
+        )}
+        {watched && (
+          <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[var(--color-accent)] flex items-center justify-center">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+        )}
       </Link>
 
       {/* Expanded hover card with preview */}

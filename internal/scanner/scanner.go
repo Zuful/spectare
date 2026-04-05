@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Zuful/spectare/internal/store"
+	"github.com/Zuful/spectare/internal/tmdb"
 )
 
 // VideoExts lists supported video file extensions.
@@ -98,7 +99,7 @@ func ParseFilename(name string) (title string, year int) {
 
 // Scan walks dir recursively, registers any video files not yet in s, and returns
 // the number of new titles added.
-func Scan(s *store.Store, dir string) (int, error) {
+func Scan(s *store.Store, dir string, tmdbClient *tmdb.Client) (int, error) {
 	if _, err := os.Stat(dir); err != nil {
 		return 0, err
 	}
@@ -249,11 +250,61 @@ func Scan(s *store.Store, dir string) (int, error) {
 
 		importCompanionFiles(s, t.ID, path, d.Name())
 
+		if tmdbClient != nil {
+			go enrichFromTMDB(s, t, tmdbClient)
+		}
+
 		log.Printf("scanner: imported %q", title)
 		added++
 		return nil
 	})
 	return added, err
+}
+
+// enrichFromTMDB fetches metadata from TMDB and fills in missing fields on a title.
+func enrichFromTMDB(s *store.Store, t *store.Title, client *tmdb.Client) {
+	result, genres, err := client.FetchMetadata(t.Title, t.Type, t.Year)
+	if err != nil {
+		log.Printf("TMDB: no match for %q: %v", t.Title, err)
+		return
+	}
+	changed := false
+	if t.Synopsis == "" && result.Overview != "" {
+		t.Synopsis = result.Overview
+		changed = true
+	}
+	if t.Year == 0 && result.Year() > 0 {
+		t.Year = result.Year()
+		changed = true
+	}
+	if (len(t.Genre) == 0 || (len(t.Genre) == 1 && t.Genre[0] == "Uncategorised")) && len(genres) > 0 {
+		t.Genre = genres
+		changed = true
+	}
+	if t.Director == "" {
+		if dir := client.Director(result.ID, result.MediaType); dir != "" {
+			t.Director = dir
+			changed = true
+		}
+	}
+	thumbDir := filepath.Join(s.TitleDir(t.ID), "thumbnails")
+	os.MkdirAll(thumbDir, 0755)
+	posterGlob, _ := filepath.Glob(filepath.Join(thumbDir, "poster.*"))
+	if len(posterGlob) == 0 {
+		client.DownloadImage(result.PosterPath, "w342", filepath.Join(thumbDir, "poster.jpg"))
+	}
+	backdropGlob, _ := filepath.Glob(filepath.Join(thumbDir, "backdrop.*"))
+	if len(backdropGlob) == 0 {
+		client.DownloadImage(result.BackdropPath, "w1280", filepath.Join(thumbDir, "backdrop.jpg"))
+	}
+	cardGlob, _ := filepath.Glob(filepath.Join(thumbDir, "card.*"))
+	if len(cardGlob) == 0 {
+		client.DownloadImage(result.BackdropPath, "w780", filepath.Join(thumbDir, "card.jpg"))
+	}
+	if changed {
+		s.Save(t)
+	}
+	log.Printf("TMDB: enriched %q (id=%d)", t.Title, result.ID)
 }
 
 // findOrCreateSeries finds an existing series Title by name or creates a new one.
