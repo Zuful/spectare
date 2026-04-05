@@ -359,17 +359,20 @@ func (srv *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	origDir := srv.store.OriginalDir(id)
 	if err := os.MkdirAll(origDir, 0755); err != nil {
+		srv.store.Delete(id)
 		http.Error(w, "failed to create upload dir", http.StatusInternalServerError)
 		return
 	}
 	origPath := filepath.Join(origDir, "video"+ext)
 	dst, err := os.Create(origPath)
 	if err != nil {
+		srv.store.Delete(id)
 		http.Error(w, "failed to write file", http.StatusInternalServerError)
 		return
 	}
 	if _, err := io.Copy(dst, f); err != nil {
 		dst.Close()
+		srv.store.Delete(id)
 		http.Error(w, "failed to write file", http.StatusInternalServerError)
 		return
 	}
@@ -630,25 +633,24 @@ func (srv *Server) handleServeSubtitle(w http.ResponseWriter, r *http.Request) {
 	}
 	dir := subtitleDir(srv.store.TitleDir(id))
 
-	// Try the exact filename first, then with .srt extension
+	// Try the exact filename first, then swap .vtt → .srt (serve SRT as VTT)
 	path := filepath.Join(dir, file)
 	raw, err := os.ReadFile(path)
+	isSRT := strings.HasSuffix(strings.ToLower(path), ".srt")
 	if err != nil {
-		// Try swapping .vtt request to .srt on disk
 		alt := strings.TrimSuffix(path, filepath.Ext(path)) + ".srt"
 		raw, err = os.ReadFile(alt)
 		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
+		isSRT = true // fell back to reading the .srt companion file
 	}
 
 	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 
-	// Convert SRT → VTT on the fly
-	if strings.HasSuffix(strings.ToLower(path), ".srt") ||
-		strings.HasSuffix(strings.ToLower(file), ".vtt") && strings.HasSuffix(strings.ToLower(path), ".srt") {
+	if isSRT {
 		w.Write([]byte(srtToVTT(string(raw))))
 		return
 	}
@@ -691,8 +693,12 @@ func (srv *Server) handleUploadSubtitle(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "failed to save file", http.StatusInternalServerError)
 		return
 	}
-	defer dst.Close()
-	io.Copy(dst, f)
+	if _, err := io.Copy(dst, f); err != nil {
+		dst.Close()
+		http.Error(w, "failed to write subtitle", http.StatusInternalServerError)
+		return
+	}
+	dst.Close()
 
 	label, ok := langLabels[lang]
 	if !ok {

@@ -123,6 +123,12 @@ func (s *Store) TitleDir(id string) string    { return filepath.Join(s.dataDir, 
 func (s *Store) HLSDir(id string) string      { return filepath.Join(s.TitleDir(id), "hls") }
 func (s *Store) OriginalDir(id string) string { return filepath.Join(s.TitleDir(id), "original") }
 
+func (s *Store) Delete(id string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket([]byte("titles")).Delete([]byte(id))
+	})
+}
+
 func (s *Store) Save(t *Title) error {
 	if err := os.MkdirAll(s.TitleDir(t.ID), 0755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
