@@ -19,7 +19,7 @@ export default function NavBar() {
     <header className="fixed top-0 w-full z-50 bg-[#131313]/80 backdrop-blur-xl border-b border-white/5">
       <div className="max-w-screen-2xl mx-auto px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-10">
-          <Link href="/" className="text-[#87a96b] font-[family-name:var(--font-manrope)] font-black text-xl tracking-tight uppercase">
+          <Link href="/" className="text-[var(--color-accent)] font-[family-name:var(--font-manrope)] font-black text-xl tracking-tight uppercase">
             Spectare
           </Link>
           <nav className="flex items-center gap-6">
@@ -41,7 +41,7 @@ export default function NavBar() {
             <Link
               key={l.href}
               href={l.href}
-              className="text-xs font-medium text-[#8e9285] hover:text-[#87a96b] transition-colors border border-[#2a2a2a] hover:border-[#87a96b]/40 px-3 py-1.5 rounded-full"
+              className="text-xs font-medium text-[#8e9285] hover:text-[var(--color-accent)] transition-colors border border-[#2a2a2a] hover:border-[var(--color-accent)]/40 px-3 py-1.5 rounded-full"
             >
               {l.label}
             </Link>
@@ -51,7 +51,7 @@ export default function NavBar() {
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
           </button>
-          <div className="w-8 h-8 rounded-full bg-[#87a96b]/20 border border-[#87a96b]/40 flex items-center justify-center text-xs font-bold text-[#87a96b]">
+          <div className="w-8 h-8 rounded-full bg-[var(--color-accent)]/20 border border-[var(--color-accent)]/40 flex items-center justify-center text-xs font-bold text-[var(--color-accent)]">
             U
           </div>
         </div>

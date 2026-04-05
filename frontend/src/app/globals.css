@@ -57,6 +57,11 @@
   --radius-full: 9999px;
 }
 
+/* Dynamic accent color — overridden by ThemeProvider via JS */
+:root {
+  --color-accent: #87a96b;
+}
+
 html {
   color-scheme: dark;
 }

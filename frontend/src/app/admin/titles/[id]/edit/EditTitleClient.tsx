@@ -95,7 +95,7 @@ export default function EditTitleClient({ id: staticId }: { id: string }) {
 
   const busy = saveState === 'saving'
   const inputCls = `w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm
-    focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50`
+    focus:outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50`
 
   if (loading) return (
     <div className="min-h-screen bg-[#131313]"><NavBar />
@@ -111,7 +111,7 @@ export default function EditTitleClient({ id: staticId }: { id: string }) {
     <div className="min-h-screen bg-[#131313]"><NavBar />
       <div className="max-w-2xl mx-auto px-6 pt-28 text-center text-[#8e9285]">
         <p>{error}</p>
-        <Link href="/browse" className="text-[#87a96b] text-sm mt-4 inline-block">← Browse</Link>
+        <Link href="/browse" className="text-[var(--color-accent)] text-sm mt-4 inline-block">← Browse</Link>
       </div>
     </div>
   )
@@ -126,7 +126,7 @@ export default function EditTitleClient({ id: staticId }: { id: string }) {
         </div>
 
         {saveState === 'done' && (
-          <div className="bg-[#87a96b]/10 border border-[#87a96b]/30 rounded-lg px-4 py-3 text-sm text-[#87a96b] mb-6">
+          <div className="bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/30 rounded-lg px-4 py-3 text-sm text-[var(--color-accent)] mb-6">
             Saved — redirecting…
           </div>
         )}
@@ -207,7 +207,7 @@ export default function EditTitleClient({ id: staticId }: { id: string }) {
           </div>
 
           <button type="submit" disabled={busy}
-            className="w-full bg-[#87a96b] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1b3706] font-bold py-3 rounded-full text-sm transition-all active:scale-95">
+            className="w-full bg-[var(--color-accent)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1b3706] font-bold py-3 rounded-full text-sm transition-all active:scale-95">
             {busy ? 'Saving…' : 'Save changes'}
           </button>
         </form>

@@ -10,7 +10,7 @@ export default function HomePage() {
       <section className="relative h-[85vh] flex items-end bg-gradient-to-b from-[#0e0e0e] to-[#131313]">
         <div className="absolute inset-0 bg-gradient-to-r from-[#0e0e0e]/80 to-transparent" />
         <div className="relative z-10 max-w-screen-2xl mx-auto px-8 pb-20 w-full">
-          <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-[#87a96b] mb-3">Featured</p>
+          <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-[var(--color-accent)] mb-3">Featured</p>
           <h1 className="font-[family-name:var(--font-manrope)] text-5xl font-black text-[#e5e2e1] tracking-tight leading-tight mb-4 max-w-xl">
             The Last Kingdom
           </h1>
@@ -20,7 +20,7 @@ export default function HomePage() {
           <div className="flex items-center gap-4">
             <Link
               href="/watch/1"
-              className="bg-[#87a96b] hover:brightness-110 text-[#1b3706] font-bold px-8 py-3 rounded-full text-sm transition-all active:scale-95 flex items-center gap-2"
+              className="bg-[var(--color-accent)] hover:brightness-110 text-[#1b3706] font-bold px-8 py-3 rounded-full text-sm transition-all active:scale-95 flex items-center gap-2"
             >
               ▶ Play
             </Link>

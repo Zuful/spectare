@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { Inter, Manrope } from 'next/font/google'
 import './globals.css'
+import ThemeProvider from '@/components/ThemeProvider'
+import SettingsPanel from '@/components/SettingsPanel'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope' })
@@ -14,7 +16,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${manrope.variable} dark h-full`}>
       <body className="min-h-full bg-[#131313] text-[#e5e2e1] antialiased">
+        <ThemeProvider />
         {children}
+        <SettingsPanel />
       </body>
     </html>
   )

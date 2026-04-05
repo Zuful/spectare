@@ -61,7 +61,7 @@ export default function SubtitleManager({ titleId }: { titleId: string }) {
           {tracks.map((t) => (
             <div key={t.file} className="flex items-center justify-between bg-[#1c1b1b] rounded-lg px-3 py-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-[#87a96b] bg-[#87a96b]/10 px-1.5 py-0.5 rounded">{t.lang.toUpperCase()}</span>
+                <span className="text-xs font-mono text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-1.5 py-0.5 rounded">{t.lang.toUpperCase()}</span>
                 <span className="text-sm text-[#e5e2e1]">{t.label}</span>
                 <span className="text-[10px] text-[#454545]">{t.file}</span>
               </div>
@@ -83,7 +83,7 @@ export default function SubtitleManager({ titleId }: { titleId: string }) {
           value={lang}
           onChange={(e) => setLang(e.target.value)}
           disabled={uploading}
-          className="bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-[#e5e2e1] focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50"
+          className="bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-[#e5e2e1] focus:outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50"
         >
           {LANG_OPTIONS.map((l) => (
             <option key={l.code} value={l.code}>{l.label}</option>

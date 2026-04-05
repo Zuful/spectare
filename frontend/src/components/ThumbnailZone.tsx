@@ -19,7 +19,7 @@ export default function ThumbnailZone({ label, hint, aspectClass, preview, onCha
       <p className="text-[10px] text-[#8e9285] uppercase tracking-widest mb-1.5">{label}</p>
       <div
         className={`relative ${aspectClass} rounded-lg overflow-hidden border-2 border-dashed cursor-pointer transition-colors group ${
-          preview ? 'border-[#87a96b]/40' : 'border-[#2a2a2a] hover:border-[#43483d]'
+          preview ? 'border-[var(--color-accent)]/40' : 'border-[#2a2a2a] hover:border-[#43483d]'
         } ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
         onClick={() => ref.current?.click()}
       >

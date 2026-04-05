@@ -282,7 +282,7 @@ export default function WatchClient({ id: staticId }: { id: string }) {
           <span className="text-[10px] font-mono text-[#454545] ml-2">DIRECT</span>
         )}
         {streamMode === 'hls' && (
-          <span className="text-[10px] font-mono text-[#87a96b] ml-2">HLS</span>
+          <span className="text-[10px] font-mono text-[var(--color-accent)] ml-2">HLS</span>
         )}
       </div>
 
@@ -332,11 +332,11 @@ export default function WatchClient({ id: staticId }: { id: string }) {
             className="w-full h-1 bg-[#ffffff20] rounded-full mb-3 cursor-pointer group"
             onClick={(e) => { e.stopPropagation(); handleSeek(e) }}
           >
-            <div className="h-full bg-[#87a96b] rounded-full" style={{ width: `${progress}%` }} />
+            <div className="h-full bg-[var(--color-accent)] rounded-full" style={{ width: `${progress}%` }} />
           </div>
 
           <div className="flex items-center gap-4 text-[#e5e2e1]">
-            <button className="hover:text-[#87a96b] transition-colors text-lg leading-none w-6 flex items-center justify-center"
+            <button className="hover:text-[var(--color-accent)] transition-colors text-lg leading-none w-6 flex items-center justify-center"
               onClick={(e) => { e.stopPropagation(); handleTogglePlay() }}>
               {playing
                 ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
@@ -355,7 +355,7 @@ export default function WatchClient({ id: staticId }: { id: string }) {
             {/* CC / subtitle selector */}
             <div className="relative">
               <button
-                className={`text-xs font-mono transition-colors px-1 rounded ${activeSub ? 'text-[#87a96b] bg-[#87a96b]/10' : subtitles.length > 0 ? 'text-[#8e9285] hover:text-[#e5e2e1]' : 'text-[#353534] cursor-default'}`}
+                className={`text-xs font-mono transition-colors px-1 rounded ${activeSub ? 'text-[var(--color-accent)] bg-[var(--color-accent)]/10' : subtitles.length > 0 ? 'text-[#8e9285] hover:text-[#e5e2e1]' : 'text-[#353534] cursor-default'}`}
                 onClick={(e) => { e.stopPropagation(); if (subtitles.length > 0) setShowSubMenu((v) => !v) }}
                 title={subtitles.length === 0 ? 'No subtitles available' : 'Subtitles'}
               >
@@ -364,7 +364,7 @@ export default function WatchClient({ id: staticId }: { id: string }) {
               {showSubMenu && (
                 <div className="absolute bottom-8 right-0 bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg overflow-hidden shadow-xl min-w-[130px] z-50">
                   <button
-                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${!activeSub ? 'text-[#87a96b]' : 'text-[#8e9285] hover:text-[#e5e2e1] hover:bg-[#2a2a2a]'}`}
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${!activeSub ? 'text-[var(--color-accent)]' : 'text-[#8e9285] hover:text-[#e5e2e1] hover:bg-[#2a2a2a]'}`}
                     onClick={(e) => { e.stopPropagation(); setActiveSub(null); setShowSubMenu(false) }}
                   >
                     Off
@@ -372,7 +372,7 @@ export default function WatchClient({ id: staticId }: { id: string }) {
                   {subtitles.map((s) => (
                     <button
                       key={s.lang}
-                      className={`w-full text-left px-3 py-2 text-xs transition-colors ${activeSub === s.lang ? 'text-[#87a96b]' : 'text-[#8e9285] hover:text-[#e5e2e1] hover:bg-[#2a2a2a]'}`}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors ${activeSub === s.lang ? 'text-[var(--color-accent)]' : 'text-[#8e9285] hover:text-[#e5e2e1] hover:bg-[#2a2a2a]'}`}
                       onClick={(e) => { e.stopPropagation(); setActiveSub(s.lang); setShowSubMenu(false) }}
                     >
                       {s.label}
@@ -384,7 +384,7 @@ export default function WatchClient({ id: staticId }: { id: string }) {
             {castAvailable && streamMode !== 'none' && (
               <button
                 title={casting ? 'Stop casting' : 'Cast to TV'}
-                className={`transition-colors ${casting ? 'text-[#87a96b]' : 'text-[#8e9285] hover:text-[#e5e2e1]'}`}
+                className={`transition-colors ${casting ? 'text-[var(--color-accent)]' : 'text-[#8e9285] hover:text-[#e5e2e1]'}`}
                 onClick={(e) => { e.stopPropagation(); handleCast() }}
               >
                 {/* Google Cast icon */}
@@ -417,7 +417,7 @@ export default function WatchClient({ id: staticId }: { id: string }) {
           const isActive = tab.id === activeTabId
           return (
             <button key={tab.id} onClick={() => handleSwitchTab(tab.id)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm min-w-0 shrink-0 transition-colors border-b-2 ${isActive ? 'bg-[#1c1b1b] border-[#87a96b]' : 'hover:bg-[#161616] border-transparent'}`}>
+              className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm min-w-0 shrink-0 transition-colors border-b-2 ${isActive ? 'bg-[#1c1b1b] border-[var(--color-accent)]' : 'hover:bg-[#161616] border-transparent'}`}>
               <div className="w-10 aspect-video bg-[#2a2a2a] rounded shrink-0 overflow-hidden">
                 {tab.thumbnail && <img src={tab.thumbnail} alt="" className="w-full h-full object-cover" />}
               </div>

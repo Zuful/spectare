@@ -134,18 +134,18 @@ export default function UploadPage() {
         {state.phase === 'done' ? (
           <div className="text-center py-16">
             <div className="text-5xl mb-4">✓</div>
-            <p className="text-[#87a96b] text-xl font-semibold mb-2">Ready to watch</p>
+            <p className="text-[var(--color-accent)] text-xl font-semibold mb-2">Ready to watch</p>
             <p className="text-[#8e9285] text-sm mb-8">Your video has been transcoded successfully.</p>
             <div className="flex gap-4 justify-center">
               <Link
                 href={`/watch/${state.titleId}`}
-                className="bg-[#87a96b] text-[#1b3706] font-bold px-8 py-3 rounded-full text-sm hover:brightness-110 transition-all"
+                className="bg-[var(--color-accent)] text-[#1b3706] font-bold px-8 py-3 rounded-full text-sm hover:brightness-110 transition-all"
               >
                 ▶ Watch now
               </Link>
               <button
                 onClick={() => { setFile(null); setTitle(''); setGenres([]); setThumbCard(null); setThumbPoster(null); setThumbBackdrop(null); setState({ phase: 'idle' }) }}
-                className="border border-[#43483d] text-[#e5e2e1] px-8 py-3 rounded-full text-sm hover:border-[#87a96b]/50 transition-all"
+                className="border border-[#43483d] text-[#e5e2e1] px-8 py-3 rounded-full text-sm hover:border-[var(--color-accent)]/50 transition-all"
               >
                 Add another
               </button>
@@ -157,9 +157,9 @@ export default function UploadPage() {
             <div
               className={`relative border-2 border-dashed rounded-xl p-10 text-center transition-colors ${
                 dragging
-                  ? 'border-[#87a96b] bg-[#87a96b]/5'
+                  ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/5'
                   : file
-                  ? 'border-[#87a96b]/40 bg-[#1c1b1b]'
+                  ? 'border-[var(--color-accent)]/40 bg-[#1c1b1b]'
                   : 'border-[#2a2a2a] hover:border-[#43483d]'
               }`}
               onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
@@ -178,7 +178,7 @@ export default function UploadPage() {
               />
               {file ? (
                 <div>
-                  <p className="text-[#87a96b] font-medium">{file.name}</p>
+                  <p className="text-[var(--color-accent)] font-medium">{file.name}</p>
                   <p className="text-[#8e9285] text-xs mt-1">{(file.size / (1024 * 1024)).toFixed(0)} MB</p>
                   {!busy && <p className="text-[#454545] text-xs mt-2">Click to change</p>}
                 </div>
@@ -202,7 +202,7 @@ export default function UploadPage() {
                 </div>
                 <div className="w-full h-1 bg-[#2a2a2a] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#87a96b] transition-all duration-300 rounded-full"
+                    className="h-full bg-[var(--color-accent)] transition-all duration-300 rounded-full"
                     style={{ width: `${state.phase === 'uploading' ? state.uploadPct : state.progress}%` }}
                   />
                 </div>
@@ -228,7 +228,7 @@ export default function UploadPage() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   disabled={busy}
-                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50"
+                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50"
                   placeholder="Title name"
                 />
               </div>
@@ -241,7 +241,7 @@ export default function UploadPage() {
                   disabled={busy}
                   min={1900}
                   max={2099}
-                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50"
+                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50"
                 />
               </div>
               <div>
@@ -250,7 +250,7 @@ export default function UploadPage() {
                   value={titleType}
                   onChange={(e) => setTitleType(e.target.value as 'movie' | 'series')}
                   disabled={busy}
-                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50"
+                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50"
                 >
                   <option value="movie">Movie</option>
                   <option value="series">Series</option>
@@ -267,7 +267,7 @@ export default function UploadPage() {
                   value={rating}
                   onChange={(e) => setRating(e.target.value)}
                   disabled={busy}
-                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50"
+                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50"
                   placeholder="TV-MA"
                 />
               </div>
@@ -278,7 +278,7 @@ export default function UploadPage() {
                   value={director}
                   onChange={(e) => setDirector(e.target.value)}
                   disabled={busy}
-                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50"
+                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50"
                   placeholder="Christopher Nolan"
                 />
               </div>
@@ -289,7 +289,7 @@ export default function UploadPage() {
                   onChange={(e) => setSynopsis(e.target.value)}
                   disabled={busy}
                   rows={3}
-                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[#87a96b]/50 disabled:opacity-50 resize-none"
+                  className="w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm focus:outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50 resize-none"
                   placeholder="A brief description…"
                 />
               </div>
@@ -333,12 +333,12 @@ export default function UploadPage() {
             </div>
 
             {/* Transcode option */}
-            <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${doTranscode ? 'border-[#87a96b]/40 bg-[#87a96b]/5' : 'border-[#2a2a2a] hover:border-[#43483d]'} ${busy ? 'opacity-50 cursor-default' : ''}`}>
+            <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${doTranscode ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/5' : 'border-[#2a2a2a] hover:border-[#43483d]'} ${busy ? 'opacity-50 cursor-default' : ''}`}>
               <input
                 type="checkbox"
                 checked={doTranscode}
                 onChange={(e) => !busy && setDoTranscode(e.target.checked)}
-                className="mt-0.5 accent-[#87a96b]"
+                className="mt-0.5 accent-[var(--color-accent)]"
               />
               <div>
                 <p className="text-sm font-medium text-[#e5e2e1]">Transcode to HLS <span className="text-[#8e9285] font-normal">(optional)</span></p>
@@ -349,7 +349,7 @@ export default function UploadPage() {
             <button
               type="submit"
               disabled={!file || busy}
-              className="w-full bg-[#87a96b] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1b3706] font-bold py-3 rounded-full text-sm transition-all active:scale-95"
+              className="w-full bg-[var(--color-accent)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-[#1b3706] font-bold py-3 rounded-full text-sm transition-all active:scale-95"
             >
               {busy ? 'Processing…' : doTranscode ? 'Upload & transcode' : 'Upload'}
             </button>

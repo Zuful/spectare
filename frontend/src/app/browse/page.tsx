@@ -58,7 +58,7 @@ function TitleCard({ title: t, layout }: CardProps) {
         href={`/title/${t.id}`}
         className={`block relative ${aspectClass} bg-[#1c1b1b] rounded-lg overflow-hidden transition-transform duration-300 ${
           hovered && !expanded ? 'scale-105' : ''
-        } hover:ring-1 hover:ring-[#87a96b]/30`}
+        } hover:ring-1 hover:ring-[var(--color-accent)]/30`}
       >
         <img
           src={`/api/titles/${t.id}/thumbnail/${thumbVariant}`}
@@ -73,7 +73,7 @@ function TitleCard({ title: t, layout }: CardProps) {
           </span>
         )}
         {hasStream(t) && (
-          <span className="absolute top-2 left-2 text-[9px] font-mono font-bold bg-[#87a96b]/20 text-[#87a96b] px-1.5 py-0.5 rounded">
+          <span className="absolute top-2 left-2 text-[9px] font-mono font-bold bg-[var(--color-accent)]/20 text-[var(--color-accent)] px-1.5 py-0.5 rounded">
             {t.streamReady ? 'HLS' : 'DIRECT'}
           </span>
         )}
@@ -82,7 +82,7 @@ function TitleCard({ title: t, layout }: CardProps) {
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             {t.year > 0 && <span className="text-[10px] text-[#8e9285]">{t.year}</span>}
             {t.genre?.slice(0, 2).map((g) => (
-              <span key={g} className="text-[9px] text-[#87a96b] bg-[#87a96b]/10 px-1 py-0.5 rounded">{g}</span>
+              <span key={g} className="text-[9px] text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-1 py-0.5 rounded">{g}</span>
             ))}
           </div>
         </div>
@@ -90,7 +90,7 @@ function TitleCard({ title: t, layout }: CardProps) {
 
       {/* Expanded hover card with preview */}
       {expanded && (
-        <div className={`absolute ${layout === 'portrait' ? 'top-0 left-0 w-[180%]' : 'top-0 left-0 right-0'} z-30 bg-[#1c1b1b] rounded-xl overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-[#87a96b]/20`}
+        <div className={`absolute ${layout === 'portrait' ? 'top-0 left-0 w-[180%]' : 'top-0 left-0 right-0'} z-30 bg-[#1c1b1b] rounded-xl overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-[var(--color-accent)]/20`}
           style={{ minWidth: layout === 'portrait' ? undefined : '100%' }}>
           {/* Video preview */}
           <div className="relative aspect-video bg-black">
@@ -112,20 +112,20 @@ function TitleCard({ title: t, layout }: CardProps) {
               {t.year > 0 && <span className="text-[10px] text-[#8e9285]">{t.year}</span>}
               {t.rating && <span className="text-[10px] text-[#8e9285] border border-[#43483d] px-1 rounded">{t.rating}</span>}
               {t.genre?.slice(0, 3).map((g) => (
-                <span key={g} className="text-[9px] text-[#87a96b]">{g}</span>
+                <span key={g} className="text-[9px] text-[var(--color-accent)]">{g}</span>
               ))}
             </div>
             <div className="flex gap-2">
               <Link
                 href={`/watch/${t.id}`}
-                className="flex-1 bg-[#87a96b] text-[#1b3706] font-bold text-xs py-1.5 rounded-full text-center hover:brightness-110 transition-all"
+                className="flex-1 bg-[var(--color-accent)] text-[#1b3706] font-bold text-xs py-1.5 rounded-full text-center hover:brightness-110 transition-all"
                 onClick={(e) => e.stopPropagation()}
               >
                 ▶ Play
               </Link>
               <Link
                 href={`/title/${t.id}`}
-                className="px-3 border border-[#43483d] text-[#e5e2e1] text-xs py-1.5 rounded-full hover:border-[#87a96b]/50 transition-all"
+                className="px-3 border border-[#43483d] text-[#e5e2e1] text-xs py-1.5 rounded-full hover:border-[var(--color-accent)]/50 transition-all"
                 onClick={(e) => e.stopPropagation()}
               >
                 Info
@@ -230,7 +230,7 @@ export default function BrowsePage() {
           {(['all', 'movie', 'series'] as const).map((t) => (
             <button key={t} onClick={() => setActiveType(t)}
               className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                activeType === t ? 'bg-[#87a96b]/20 text-[#87a96b] border border-[#87a96b]/40' : 'bg-[#1c1b1b] text-[#8e9285] hover:text-[#c4c8ba]'
+                activeType === t ? 'bg-[var(--color-accent)]/20 text-[var(--color-accent)] border border-[var(--color-accent)]/40' : 'bg-[#1c1b1b] text-[#8e9285] hover:text-[#c4c8ba]'
               }`}>
               {t === 'all' ? 'All types' : t === 'movie' ? 'Movies' : 'Series'}
             </button>
@@ -243,7 +243,7 @@ export default function BrowsePage() {
             {genres.map((g) => (
               <button key={g} onClick={() => setActiveGenre(g)}
                 className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  activeGenre === g ? 'bg-[#87a96b] text-[#1b3706]' : 'bg-[#1c1b1b] text-[#c4c8ba] hover:bg-[#2a2a2a]'
+                  activeGenre === g ? 'bg-[var(--color-accent)] text-[#1b3706]' : 'bg-[#1c1b1b] text-[#c4c8ba] hover:bg-[#2a2a2a]'
                 }`}>
                 {g}
               </button>
@@ -270,7 +270,7 @@ export default function BrowsePage() {
             <p className="text-4xl mb-3">◻</p>
             <p className="text-sm">No titles found</p>
             {titles.length === 0 && (
-              <Link href="/admin/upload" className="inline-block mt-4 text-[#87a96b] text-xs hover:underline">
+              <Link href="/admin/upload" className="inline-block mt-4 text-[var(--color-accent)] text-xs hover:underline">
                 Add your first title →
               </Link>
             )}

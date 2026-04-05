@@ -42,14 +42,14 @@ export default function TagInput({ tags, onChange, disabled }: Props) {
     <div className="relative">
       <div
         className={`flex flex-wrap gap-1.5 min-h-[42px] bg-[#1c1b1b] border rounded-lg px-3 py-2 cursor-text transition-colors ${
-          focused ? 'border-[#87a96b]/50' : 'border-[#2a2a2a]'
+          focused ? 'border-[var(--color-accent)]/50' : 'border-[#2a2a2a]'
         } ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
         onClick={() => inputRef.current?.focus()}
       >
         {tags.map((tag) => (
           <span
             key={tag}
-            className="flex items-center gap-1 bg-[#87a96b]/15 text-[#87a96b] text-xs font-medium px-2 py-0.5 rounded-full"
+            className="flex items-center gap-1 bg-[var(--color-accent)]/15 text-[var(--color-accent)] text-xs font-medium px-2 py-0.5 rounded-full"
           >
             {tag}
             <button
@@ -97,7 +97,7 @@ export default function TagInput({ tags, onChange, disabled }: Props) {
               key={s}
               type="button"
               onMouseDown={(e) => { e.preventDefault(); addTag(s) }}
-              className="text-[10px] px-2 py-0.5 rounded-full bg-[#2a2a2a] text-[#8e9285] hover:bg-[#87a96b]/15 hover:text-[#87a96b] transition-colors"
+              className="text-[10px] px-2 py-0.5 rounded-full bg-[#2a2a2a] text-[#8e9285] hover:bg-[var(--color-accent)]/15 hover:text-[var(--color-accent)] transition-colors"
             >
               {s}
             </button>

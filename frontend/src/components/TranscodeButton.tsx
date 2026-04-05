@@ -60,7 +60,7 @@ export default function TranscodeButton({ titleId }: { titleId: string }) {
 
   if (status === 'ready') {
     return (
-      <span className="flex items-center gap-1.5 text-xs text-[#87a96b] font-medium">
+      <span className="flex items-center gap-1.5 text-xs text-[var(--color-accent)] font-medium">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         HLS ready
       </span>
@@ -71,7 +71,7 @@ export default function TranscodeButton({ titleId }: { titleId: string }) {
     return (
       <div className="flex items-center gap-3">
         <div className="w-32 h-1 bg-[#2a2a2a] rounded-full overflow-hidden">
-          <div className="h-full bg-[#87a96b] transition-all duration-300" style={{ width: `${progress}%` }} />
+          <div className="h-full bg-[var(--color-accent)] transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
         <span className="text-xs text-[#8e9285] tabular-nums">{progress}%</span>
       </div>
@@ -90,7 +90,7 @@ export default function TranscodeButton({ titleId }: { titleId: string }) {
   return (
     <button
       onClick={handleTranscode}
-      className="border border-[#43483d] hover:border-[#87a96b]/50 text-[#8e9285] hover:text-[#e5e2e1] font-medium px-6 py-2.5 rounded-full text-xs transition-all active:scale-95 flex items-center gap-2"
+      className="border border-[#43483d] hover:border-[var(--color-accent)]/50 text-[#8e9285] hover:text-[#e5e2e1] font-medium px-6 py-2.5 rounded-full text-xs transition-all active:scale-95 flex items-center gap-2"
     >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
       Transcode to HLS
