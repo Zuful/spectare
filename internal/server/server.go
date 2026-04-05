@@ -68,54 +68,79 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		r.Get("/", placeholderHandler)
 		return r
 	}
-	fileServer := http.FileServer(http.FS(sub))
-	serve := func(w http.ResponseWriter, r *http.Request, path string) {
-		r.URL.Path = "/" + path
-		fileServer.ServeHTTP(w, r)
+	// serveFile serves a single file from the embedded FS using http.ServeContent,
+	// which does not perform any redirects (unlike http.FileServer).
+	serveFile := func(w http.ResponseWriter, r *http.Request, path string) {
+		f, err := sub.Open(path)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer f.Close()
+		info, err := f.Stat()
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		rs, ok := f.(io.ReadSeeker)
+		if !ok {
+			data, _ := io.ReadAll(f)
+			rs = strings.NewReader(string(data))
+		}
+		http.ServeContent(w, r, info.Name(), info.ModTime(), rs)
 	}
 
 	// staticHandler serves pre-built Next.js pages.
-	// Next.js App Router sends POST for RSC prefetch — we normalise those to GET
-	// so that http.FileServer (which only handles GET/HEAD) doesn't reject them.
+	// We bypass http.FileServer entirely to avoid its auto-redirect behaviour
+	// (e.g. /index.html → /, /browse/index.html → /browse/ → infinite loop).
+	// Next.js App Router also sends POST for RSC prefetch — normalised to GET.
 	staticHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			r.Method = http.MethodGet
 		}
 
-		// Normalise: strip leading slash, add trailing index.html for dirs
 		path := strings.TrimPrefix(r.URL.Path, "/")
+
+		// Directory-like paths → look for index.html inside
 		if path == "" || strings.HasSuffix(path, "/") {
-			path = strings.TrimSuffix(path, "/")
-			if path == "" {
+			base := strings.TrimSuffix(path, "/")
+			if base == "" {
 				path = "index.html"
 			} else {
-				path = path + "/index.html"
+				path = base + "/index.html"
 			}
 		}
 
-		// Exact file exists → serve it directly
-		if _, err := fs.Stat(sub, path); err == nil {
-			r.URL.Path = "/" + path
-			fileServer.ServeHTTP(w, r)
-			return
+		// Exact file hit (static asset or pre-generated page)
+		if info, err := fs.Stat(sub, path); err == nil {
+			if info.IsDir() {
+				// Directory entry: serve its index.html
+				path = path + "/index.html"
+				if _, err := fs.Stat(sub, path); err == nil {
+					serveFile(w, r, path)
+					return
+				}
+			} else {
+				serveFile(w, r, path)
+				return
+			}
 		}
 
 		// Dynamic route fallback: serve the pre-generated template (id "1") for
-		// any dynamic route whose ID is a runtime hex string rather than a
-		// static integer. Walk up the path replacing the dynamic segment with "1".
+		// any dynamic route whose real ID is a runtime hex string.
 		// Handles: /watch/{id}, /title/{id}, /admin/titles/{id}/edit, etc.
 		base := strings.TrimSuffix(path, "/index.html")
 		parts := strings.Split(base, "/")
 		for i := len(parts) - 1; i >= 1; i-- {
 			candidate := strings.Join(append(parts[:i], append([]string{"1"}, parts[i+1:]...)...), "/") + "/index.html"
 			if _, err := fs.Stat(sub, candidate); err == nil {
-				serve(w, r, candidate)
+				serveFile(w, r, candidate)
 				return
 			}
 		}
 
-		// Final fallback: root index.html (SPA home)
-		serve(w, r, "index.html")
+		// Final fallback: root index.html
+		serveFile(w, r, "index.html")
 	})
 
 	r.Get("/*", staticHandler)
