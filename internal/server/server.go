@@ -58,14 +58,14 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 	// Static frontend
 	sub, err := fs.Sub(embedded, "frontend/out")
 	if err != nil {
-		r.Get("/*", placeholderHandler)
-		r.Get("/", placeholderHandler)
+		r.Handle("/*", http.HandlerFunc(placeholderHandler))
+		r.Handle("/", http.HandlerFunc(placeholderHandler))
 		return r
 	}
 	// Verify the frontend was actually built (index.html must exist)
 	if _, err := fs.Stat(sub, "index.html"); err != nil {
-		r.Get("/*", placeholderHandler)
-		r.Get("/", placeholderHandler)
+		r.Handle("/*", http.HandlerFunc(placeholderHandler))
+		r.Handle("/", http.HandlerFunc(placeholderHandler))
 		return r
 	}
 	fileServer := http.FileServer(http.FS(sub))
@@ -73,7 +73,8 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		r.URL.Path = "/" + path
 		fileServer.ServeHTTP(w, r)
 	}
-	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+	// Handle all HTTP methods: Next.js App Router sends POST for prefetch requests.
+	r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Normalise: strip leading slash, add trailing index.html for dirs
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path == "" || strings.HasSuffix(path, "/") {
@@ -108,10 +109,10 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 
 		// Final fallback: root index.html (SPA home)
 		serve(w, r, "index.html")
-	})
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	r.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fileServer.ServeHTTP(w, r)
-	})
+	}))
 
 	return r
 }
