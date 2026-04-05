@@ -1,5 +1,6 @@
 build:
 	cd frontend && npm install && npm run build && cd ..
+	go mod tidy
 	go build -o spectare .
 
 dev-backend:
