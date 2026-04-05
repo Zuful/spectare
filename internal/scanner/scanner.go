@@ -4,6 +4,7 @@ package scanner
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,6 +21,11 @@ var VideoExts = map[string]bool{
 	".mp4": true, ".m4v": true, ".mkv": true, ".avi": true,
 	".mov": true, ".webm": true, ".flv": true, ".wmv": true,
 	".ts": true, ".mpg": true, ".mpeg": true,
+}
+
+// ImageExts lists supported image file extensions.
+var ImageExts = map[string]bool{
+	".jpg": true, ".jpeg": true, ".png": true, ".webp": true,
 }
 
 // MIMEType returns the Content-Type for a video extension.
@@ -145,11 +151,130 @@ func Scan(s *store.Store, dir string) (int, error) {
 			log.Printf("scanner: failed to save %q: %v", path, err)
 			return nil
 		}
+
+		importCompanionFiles(s, t.ID, path, d.Name())
+
 		log.Printf("scanner: imported %q", title)
 		added++
 		return nil
 	})
 	return added, err
+}
+
+// importCompanionFiles looks for thumbnail images and subtitle files alongside
+// the video file and copies them into the title's data directory.
+//
+// Thumbnail lookup order (per variant):
+//
+//	poster.{ext}  / backdrop.{ext}  → explicit variant files
+//	{videobase}.{ext}                → named after the video file
+//	cover.{ext} / thumb.{ext}        → common generic names (→ card)
+//
+// Subtitle lookup:
+//
+//	{lang}.srt / {lang}.vtt          → e.g. en.srt, fr.vtt
+//	{videobase}.{lang}.srt/vtt       → e.g. Inception.2010.en.srt
+func importCompanionFiles(s *store.Store, id, videoPath, videoName string) {
+	videoDir := filepath.Dir(videoPath)
+	videoBase := strings.TrimSuffix(videoName, filepath.Ext(videoName))
+	titleDir := s.TitleDir(id)
+
+	// ── Thumbnails ─────────────────────────────────────────────────────────────
+	thumbDir := filepath.Join(titleDir, "thumbnails")
+	os.MkdirAll(thumbDir, 0755)
+
+	// variant → candidate filenames (first match wins)
+	thumbCandidates := map[string][]string{
+		"card":     {videoBase + ".card", "card", "cover", "thumb", videoBase},
+		"poster":   {videoBase + ".poster", "poster", videoBase},
+		"backdrop": {videoBase + ".backdrop", "backdrop", "fanart", "background", videoBase},
+	}
+
+	for variant, names := range thumbCandidates {
+		// Skip if already present
+		if existsGlob(thumbDir, variant+".*") {
+			continue
+		}
+		for _, stem := range names {
+			if found := findImageFile(videoDir, stem); found != "" {
+				dst := filepath.Join(thumbDir, variant+filepath.Ext(found))
+				if err := copyFile(found, dst); err == nil {
+					log.Printf("scanner: copied %s thumbnail for %q from %s", variant, videoBase, found)
+				}
+				break
+			}
+		}
+	}
+
+	// ── Subtitles ──────────────────────────────────────────────────────────────
+	subtitleDir := filepath.Join(titleDir, "subtitles")
+	os.MkdirAll(subtitleDir, 0755)
+
+	// Known ISO 639-1 language codes
+	langCodes := []string{
+		"en", "fr", "es", "de", "it", "pt", "nl", "ru",
+		"ja", "ko", "zh", "ar", "pl", "sv", "da", "no",
+		"fi", "tr", "he", "cs", "hu", "ro", "th", "vi",
+	}
+
+	for _, lang := range langCodes {
+		// Patterns: {lang}.srt, {videobase}.{lang}.srt, {videobase}.{lang}.forced.srt, etc.
+		candidates := []string{
+			lang + ".srt",
+			lang + ".vtt",
+			videoBase + "." + lang + ".srt",
+			videoBase + "." + lang + ".vtt",
+			videoBase + "." + lang + ".forced.srt",
+			videoBase + "." + lang + ".forced.vtt",
+		}
+		for _, candidate := range candidates {
+			src := filepath.Join(videoDir, candidate)
+			if _, err := os.Stat(src); err == nil {
+				ext := filepath.Ext(candidate)
+				dstName := lang + ext
+				dst := filepath.Join(subtitleDir, dstName)
+				if _, err := os.Stat(dst); err != nil { // don't overwrite
+					if err := copyFile(src, dst); err == nil {
+						log.Printf("scanner: copied %s subtitle for %q", lang, videoBase)
+					}
+				}
+				break
+			}
+		}
+	}
+}
+
+// findImageFile returns the path of the first image file matching stem.{ext} in dir.
+func findImageFile(dir, stem string) string {
+	for ext := range ImageExts {
+		p := filepath.Join(dir, stem+ext)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// existsGlob reports whether any file matches pattern in dir.
+func existsGlob(dir, pattern string) bool {
+	matches, _ := filepath.Glob(filepath.Join(dir, pattern))
+	return len(matches) > 0
+}
+
+// copyFile copies src to dst.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
 }
 
 func newID() string {

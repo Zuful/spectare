@@ -53,6 +53,18 @@ Opens at `http://localhost:8766`.
 
 If `MEDIA_DIR` is set, Spectare scans it at boot and registers all video files — no upload needed. You can rescan at any time via `POST /api/scan`. Videos on external drives are served directly; if the drive is disconnected, the stream returns 404 until reconnected.
 
+The scanner also detects **companion files** placed alongside each video and imports them automatically:
+
+| File | Imported as |
+|------|-------------|
+| `poster.jpg/png/webp` | Poster thumbnail (2:3) |
+| `backdrop.jpg/png/webp` | Backdrop thumbnail (wide) |
+| `cover.jpg` / `thumb.jpg` / `{videoname}.jpg` | Card thumbnail (16:9) |
+| `en.srt`, `fr.srt`, … | Subtitles by language code |
+| `{videoname}.en.srt`, `{videoname}.fr.vtt`, … | Subtitles (alternate naming) |
+
+Companion files are copied into `DATA_DIR` at scan time, so they remain accessible even if the source drive is later disconnected.
+
 ## Development
 
 ```bash
@@ -119,6 +131,9 @@ data/
         card.{ext}     ← 16:9 — shown in Browse grid
         poster.{ext}   ← 2:3  — shown on title detail page
         backdrop.{ext} ← wide — hero background on title page
+      subtitles/
+        en.srt         ← subtitle tracks by language code
+        fr.vtt         ← .srt or .vtt
       preview.mp4      ← 30s preview clip (auto-generated or manual)
       original/
         video.*        ← source file (uploaded titles only)
@@ -156,6 +171,10 @@ Titles sourced via `MEDIA_DIR` have no `original/` folder — the source file st
 | `GET` | `/api/titles/{id}/thumbnail/{variant}` | Thumbnail by variant: `card`, `poster`, `backdrop` |
 | `GET` | `/api/titles/{id}/preview` | 30s preview clip |
 | `POST` | `/api/titles/{id}/preview` | Upload a custom preview clip |
+| `GET` | `/api/titles/{id}/subtitles` | List subtitle tracks |
+| `POST` | `/api/titles/{id}/subtitles` | Upload a subtitle file (`multipart/form-data`: `file`, `lang`) |
+| `GET` | `/api/titles/{id}/subtitles/{file}` | Serve a subtitle file (VTT, converted from SRT on the fly) |
+| `DELETE` | `/api/titles/{id}/subtitles/{file}` | Delete a subtitle track |
 | `GET` | `/api/stream/{id}/direct` | Stream source file (Range requests supported) |
 | `GET` | `/api/stream/{id}/master.m3u8` | HLS master playlist |
 | `GET` | `/api/stream/{id}/{quality}/stream.m3u8` | Variant playlist |

@@ -99,6 +99,9 @@ export default function WatchClient({ id: staticId }: { id: string }) {
     return () => { try { document.head.removeChild(script) } catch {} }
   }, [])
 
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const activeTitleId = activeTab?.titleId ?? id
+
   const handleCast = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any
@@ -134,9 +137,6 @@ export default function WatchClient({ id: staticId }: { id: string }) {
       t.mode = activeSub && t.language === activeSub ? 'showing' : 'hidden'
     }
   }, [activeSub])
-
-  const activeTab = tabs.find((t) => t.id === activeTabId)
-  const activeTitleId = activeTab?.titleId ?? id
 
   // Load stream whenever active title or stream mode changes
   useEffect(() => {
