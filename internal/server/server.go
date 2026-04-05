@@ -58,14 +58,14 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 	// Static frontend
 	sub, err := fs.Sub(embedded, "frontend/out")
 	if err != nil {
-		r.Handle("/*", http.HandlerFunc(placeholderHandler))
-		r.Handle("/", http.HandlerFunc(placeholderHandler))
+		r.Get("/*", placeholderHandler)
+		r.Get("/", placeholderHandler)
 		return r
 	}
 	// Verify the frontend was actually built (index.html must exist)
 	if _, err := fs.Stat(sub, "index.html"); err != nil {
-		r.Handle("/*", http.HandlerFunc(placeholderHandler))
-		r.Handle("/", http.HandlerFunc(placeholderHandler))
+		r.Get("/*", placeholderHandler)
+		r.Get("/", placeholderHandler)
 		return r
 	}
 	fileServer := http.FileServer(http.FS(sub))
@@ -73,8 +73,15 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		r.URL.Path = "/" + path
 		fileServer.ServeHTTP(w, r)
 	}
-	// Handle all HTTP methods: Next.js App Router sends POST for prefetch requests.
-	r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	// staticHandler serves pre-built Next.js pages.
+	// Next.js App Router sends POST for RSC prefetch — we normalise those to GET
+	// so that http.FileServer (which only handles GET/HEAD) doesn't reject them.
+	staticHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			r.Method = http.MethodGet
+		}
+
 		// Normalise: strip leading slash, add trailing index.html for dirs
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path == "" || strings.HasSuffix(path, "/") {
@@ -109,10 +116,12 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 
 		// Final fallback: root index.html (SPA home)
 		serve(w, r, "index.html")
-	}))
-	r.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fileServer.ServeHTTP(w, r)
-	}))
+	})
+
+	r.Get("/*", staticHandler)
+	r.Post("/*", staticHandler) // Next.js RSC prefetch
+	r.Get("/", staticHandler)
+	r.Post("/", staticHandler)
 
 	return r
 }
