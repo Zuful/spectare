@@ -53,6 +53,21 @@ Opens at `http://localhost:8766`.
 
 If `MEDIA_DIR` is set, Spectare scans it at boot and registers all video files — no upload needed. You can rescan at any time via `POST /api/scan`. Videos on external drives are served directly; if the drive is disconnected, the stream returns 404 until reconnected.
 
+The scanner automatically detects **series** via folder structure:
+
+```
+/Volumes/MyDrive/
+  Breaking Bad/
+    Season 1/
+      S01E01 - Pilot.mkv
+      S01E02 - Cat's in the Bag.mkv
+    Season 2/
+      S02E01 - ...
+  Inception (2010).mkv   ← standalone movie
+```
+
+`Season N`, `Saison N`, `S0N` folder names are all recognised. Episode numbers are parsed from `SxxExx`, `Exx`, and similar patterns. The series title is created automatically (or reused if already present). Each episode can then be transcoded and streamed independently.
+
 The scanner also detects **companion files** placed alongside each video and imports them automatically:
 
 | File | Imported as |
@@ -124,7 +139,7 @@ All video files are scanned on startup. Titles and years are parsed from filenam
 
 ```
 data/
-  spectare.db          ← bbolt database (title metadata)
+  spectare.db          ← bbolt database (titles + episodes)
   titles/
     {id}/
       thumbnails/
@@ -141,9 +156,19 @@ data/
         master.m3u8
         360p/  …
         720p/  …
+  episodes/
+    {id}/
+      thumbnails/
+        card.{ext}     ← episode thumbnail
+      original/
+        video.*        ← source file (uploaded episodes only)
+      hls/             ← present after HLS transcoding
+        master.m3u8
+        360p/  …
+        720p/  …
 ```
 
-Titles sourced via `MEDIA_DIR` have no `original/` folder — the source file stays on the original drive.
+Titles and episodes sourced via `MEDIA_DIR` have no `original/` folder — the source file stays on the original drive.
 
 ## Routes
 
@@ -154,6 +179,7 @@ Titles sourced via `MEDIA_DIR` have no `original/` folder — the source file st
 | My List | `/my-list` |
 | Title detail | `/title/[id]` |
 | Player | `/watch/[id]` |
+| Episode player | `/watch/episode/[id]` |
 | Upload | `/admin/upload` |
 | Edit title | `/admin/titles/[id]/edit` |
 
@@ -181,6 +207,24 @@ Titles sourced via `MEDIA_DIR` have no `original/` folder — the source file st
 | `GET` | `/api/stream/{id}/{quality}/{segment}.ts` | Video segment |
 | `POST` | `/api/scan` | Rescan `MEDIA_DIR` (or pass `dir=` in body to override) |
 
+#### Episodes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/titles/{id}/episodes` | List all episodes for a series |
+| `POST` | `/api/titles/{id}/episodes` | Upload an episode (multipart/form-data) |
+| `GET` | `/api/episodes/{id}` | Get episode metadata |
+| `PUT` | `/api/episodes/{id}` | Update episode metadata |
+| `DELETE` | `/api/episodes/{id}` | Delete episode and files |
+| `GET` | `/api/episodes/{id}/thumbnail` | Episode thumbnail |
+| `POST` | `/api/episodes/{id}/thumbnail` | Upload episode thumbnail |
+| `GET` | `/api/episodes/{id}/status` | Episode transcoding progress |
+| `POST` | `/api/episodes/{id}/transcode` | Trigger episode HLS transcoding |
+| `GET` | `/api/stream/episodes/{id}/direct` | Direct stream (Range supported) |
+| `GET` | `/api/stream/episodes/{id}/master.m3u8` | Episode HLS master playlist |
+| `GET` | `/api/stream/episodes/{id}/{quality}/stream.m3u8` | Variant playlist |
+| `GET` | `/api/stream/episodes/{id}/{quality}/{segment}.ts` | Video segment |
+
 ### Upload form fields (`POST /api/titles`, `PUT /api/titles/{id}`)
 
 | Field | Type | Description |
@@ -197,6 +241,18 @@ Titles sourced via `MEDIA_DIR` have no `original/` folder — the source file st
 | `poster` | image file | 2:3 portrait thumbnail |
 | `backdrop` | image file | Wide backdrop image |
 | `transcode` | `true`/`false` | Auto-start HLS transcoding (POST only) |
+
+### Episode upload form fields (`POST /api/titles/{id}/episodes`)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `file` | file | Video file |
+| `season` | int | Season number |
+| `number` | int | Episode number within season |
+| `title` | string | Episode title |
+| `synopsis` | string | Episode description (optional) |
+| `thumbnail` | image file | Episode thumbnail (optional) |
+| `transcode` | `true`/`false` | Auto-start HLS transcoding |
 
 ## Design system
 

@@ -3,10 +3,18 @@ import { useEffect, useState, useCallback } from 'react'
 
 type Status = 'idle' | 'transcoding' | 'ready' | 'error'
 
-export default function TranscodeButton({ titleId }: { titleId: string }) {
+export default function TranscodeButton({ titleId, episodeId }: { titleId: string; episodeId?: string }) {
   const [status, setStatus] = useState<Status>('idle')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState('')
+
+  const statusUrl = episodeId
+    ? `/api/episodes/${episodeId}/status`
+    : `/api/titles/${titleId}/status`
+
+  const transcodeUrl = episodeId
+    ? `/api/episodes/${episodeId}/transcode`
+    : `/api/titles/${titleId}/transcode`
 
   // Poll when transcoding
   useEffect(() => {
@@ -14,7 +22,7 @@ export default function TranscodeButton({ titleId }: { titleId: string }) {
     if (status === 'transcoding') {
       interval = setInterval(async () => {
         try {
-          const res = await fetch(`/api/titles/${titleId}/status`)
+          const res = await fetch(statusUrl)
           const data = await res.json()
           if (data.status === 'ready') {
             setStatus('ready')
@@ -33,11 +41,11 @@ export default function TranscodeButton({ titleId }: { titleId: string }) {
       }, 1500)
     }
     return () => { if (interval) clearInterval(interval) }
-  }, [status, titleId])
+  }, [status, statusUrl])
 
   // Check current status on mount
   useEffect(() => {
-    fetch(`/api/titles/${titleId}/status`)
+    fetch(statusUrl)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (!data) return
@@ -45,18 +53,18 @@ export default function TranscodeButton({ titleId }: { titleId: string }) {
         else if (data.status === 'transcoding') { setStatus('transcoding'); setProgress(data.progress ?? 0) }
       })
       .catch(() => {})
-  }, [titleId])
+  }, [statusUrl])
 
   const handleTranscode = useCallback(async () => {
     setStatus('transcoding')
     setProgress(0)
     try {
-      await fetch(`/api/titles/${titleId}/transcode`, { method: 'POST' })
+      await fetch(transcodeUrl, { method: 'POST' })
     } catch {
       setStatus('error')
       setError('Failed to start transcoding')
     }
-  }, [titleId])
+  }, [transcodeUrl])
 
   if (status === 'ready') {
     return (

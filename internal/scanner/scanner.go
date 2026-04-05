@@ -51,6 +51,8 @@ func MIMEType(ext string) string {
 }
 
 var yearRe = regexp.MustCompile(`[\(\[\s\.](\d{4})[\)\]\s\.]`)
+var seasonRe = regexp.MustCompile(`(?i)^(?:season|saison|serie|series|staffel|temporada)\s*(\d+)$|^[Ss](\d+)$`)
+var episodeRe = regexp.MustCompile(`(?i)[Ss](\d{1,2})[Ee](\d{1,3})|[Ee][Pp]?(\d{1,3})`)
 
 // ParseFilename extracts a human-readable title and year from a video filename.
 //
@@ -110,6 +112,20 @@ func Scan(s *store.Store, dir string) (int, error) {
 		}
 	}
 
+	// Build a set of already-known episode DirectPaths
+	// We scan all series titles and their episodes to avoid duplicates
+	knownEpisodePaths := make(map[string]bool)
+	for _, t := range existing {
+		if t.Type == "series" {
+			eps, _ := s.ListEpisodes(t.ID)
+			for _, e := range eps {
+				if e.DirectPath != "" {
+					knownEpisodePaths[e.DirectPath] = true
+				}
+			}
+		}
+	}
+
 	added := 0
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -126,6 +142,85 @@ func Scan(s *store.Store, dir string) (int, error) {
 		if !VideoExts[ext] {
 			return nil
 		}
+
+		// Check if this file is inside a season folder
+		parentDir := filepath.Dir(path)
+		parentName := filepath.Base(parentDir)
+		if m := seasonRe.FindStringSubmatch(parentName); m != nil {
+			// This is an episode file
+			if knownEpisodePaths[path] {
+				return nil
+			}
+
+			// Extract season number (group 1 or group 2 depending on which branch matched)
+			seasonNum := 0
+			if m[1] != "" {
+				seasonNum, _ = strconv.Atoi(m[1])
+			} else if m[2] != "" {
+				seasonNum, _ = strconv.Atoi(m[2])
+			}
+
+			// Series name is the grandparent directory
+			grandparentDir := filepath.Dir(parentDir)
+			seriesName := filepath.Base(grandparentDir)
+
+			// Find or create a series title
+			seriesTitle, err := findOrCreateSeries(s, seriesName, existing)
+			if err != nil {
+				log.Printf("scanner: failed to find/create series %q: %v", seriesName, err)
+				return nil
+			}
+
+			// Parse episode number and title from filename
+			base := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
+			episodeNum := 0
+			episodeTitle := base
+			if em := episodeRe.FindStringSubmatchIndex(base); em != nil {
+				submatches := episodeRe.FindStringSubmatch(base)
+				// submatches[1],[2] = SxxExx groups; submatches[3] = Exx group
+				if submatches[2] != "" {
+					episodeNum, _ = strconv.Atoi(submatches[2])
+				} else if submatches[3] != "" {
+					episodeNum, _ = strconv.Atoi(submatches[3])
+				}
+				// Episode title is everything after the pattern
+				afterIdx := em[1]
+				tail := strings.TrimSpace(base[afterIdx:])
+				tail = strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(tail)
+				tail = strings.TrimSpace(tail)
+				if tail != "" {
+					episodeTitle = tail
+				}
+			} else {
+				// No episode pattern in filename; use cleaned filename as title
+				episodeTitle, _ = ParseFilename(d.Name())
+				if episodeTitle == "" {
+					episodeTitle = base
+				}
+			}
+
+			e := &store.Episode{
+				ID:              newID(),
+				SeriesID:        seriesTitle.ID,
+				Season:          seasonNum,
+				Number:          episodeNum,
+				Title:           episodeTitle,
+				StreamReady:     false,
+				TranscodeStatus: store.StatusPending,
+				DirectPath:      path,
+				DirectExt:       ext,
+				CreatedAt:       time.Now(),
+			}
+			if err := s.SaveEpisode(e); err != nil {
+				log.Printf("scanner: failed to save episode %q: %v", path, err)
+				return nil
+			}
+			knownEpisodePaths[path] = true
+			log.Printf("scanner: imported episode S%02dE%02d %q (series: %q)", seasonNum, episodeNum, episodeTitle, seriesName)
+			added++
+			return nil
+		}
+
 		if known[path] {
 			return nil
 		}
@@ -159,6 +254,25 @@ func Scan(s *store.Store, dir string) (int, error) {
 		return nil
 	})
 	return added, err
+}
+
+// findOrCreateSeries finds an existing series Title by name or creates a new one.
+func findOrCreateSeries(s *store.Store, name string, existing []*store.Title) (*store.Title, error) {
+	for _, t := range existing {
+		if t.Type == "series" && strings.EqualFold(t.Title, name) {
+			return t, nil
+		}
+	}
+	t := &store.Title{
+		ID:              newID(),
+		Title:           name,
+		Type:            "series",
+		Genre:           []string{},
+		StreamReady:     false,
+		TranscodeStatus: store.StatusPending,
+		CreatedAt:       time.Now(),
+	}
+	return t, s.Save(t)
 }
 
 // importCompanionFiles looks for thumbnail images and subtitle files alongside

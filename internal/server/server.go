@@ -50,6 +50,17 @@ func New(embedded embed.FS, s *store.Store, mediaDir string) http.Handler {
 		r.Post("/titles/{id}/subtitles", srv.handleUploadSubtitle)
 		r.Get("/titles/{id}/subtitles/{file}", srv.handleServeSubtitle)
 		r.Delete("/titles/{id}/subtitles/{file}", srv.handleDeleteSubtitle)
+		r.Get("/titles/{id}/episodes", srv.handleListEpisodes)
+		r.Post("/titles/{id}/episodes", srv.handleUploadEpisode)
+		r.Get("/episodes/{id}", srv.handleGetEpisode)
+		r.Put("/episodes/{id}", srv.handleUpdateEpisode)
+		r.Delete("/episodes/{id}", srv.handleDeleteEpisode)
+		r.Get("/episodes/{id}/thumbnail", srv.handleEpisodeThumbnail)
+		r.Post("/episodes/{id}/thumbnail", srv.handleUploadEpisodeThumbnail)
+		r.Get("/episodes/{id}/status", srv.handleEpisodeTranscodeStatus)
+		r.Post("/episodes/{id}/transcode", srv.handleStartEpisodeTranscode)
+		r.Get("/stream/episodes/{id}/*", srv.handleEpisodeHLSFile)
+		r.Get("/stream/episodes/{id}/direct", srv.handleEpisodeDirectStream)
 		r.Post("/scan", srv.handleScan)
 		r.Get("/stream/{id}/*", srv.handleHLSFile)
 		r.Get("/stream/{id}/direct", srv.handleDirectStream)
@@ -762,6 +773,362 @@ func srtToVTT(srt string) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// ── Episode handlers ─────────────────────────────────────────────────────────
+
+// GET /api/titles/{id}/episodes
+func (srv *Server) handleListEpisodes(w http.ResponseWriter, r *http.Request) {
+	seriesID := chi.URLParam(r, "id")
+	episodes, err := srv.store.ListEpisodes(seriesID)
+	if err != nil {
+		http.Error(w, "failed to list episodes", http.StatusInternalServerError)
+		return
+	}
+	if episodes == nil {
+		episodes = []*store.Episode{}
+	}
+	jsonResponse(w, episodes)
+}
+
+// POST /api/titles/{id}/episodes
+func (srv *Server) handleUploadEpisode(w http.ResponseWriter, r *http.Request) {
+	seriesID := chi.URLParam(r, "id")
+	if _, err := srv.store.Load(seriesID); err != nil {
+		http.Error(w, "series not found", http.StatusNotFound)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<30)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, "failed to parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	f, fh, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file field", http.StatusBadRequest)
+		return
+	}
+	defer f.Close()
+
+	seasonStr := r.FormValue("season")
+	numberStr := r.FormValue("number")
+	if seasonStr == "" || numberStr == "" {
+		http.Error(w, "season and number are required", http.StatusBadRequest)
+		return
+	}
+	season, err := strconv.Atoi(seasonStr)
+	if err != nil || season < 1 {
+		http.Error(w, "invalid season", http.StatusBadRequest)
+		return
+	}
+	number, err := strconv.Atoi(numberStr)
+	if err != nil || number < 1 {
+		http.Error(w, "invalid number", http.StatusBadRequest)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(fh.Filename))
+	if ext == "" {
+		ext = ".mp4"
+	}
+
+	id := newID()
+	titleStr := r.FormValue("title")
+	if titleStr == "" {
+		titleStr = strings.TrimSuffix(fh.Filename, ext)
+	}
+
+	doTranscode := r.FormValue("transcode") == "true" || r.FormValue("transcode") == "1"
+
+	e := &store.Episode{
+		ID:              id,
+		SeriesID:        seriesID,
+		Season:          season,
+		Number:          number,
+		Title:           titleStr,
+		Synopsis:        r.FormValue("synopsis"),
+		StreamReady:     false,
+		TranscodeStatus: store.StatusPending,
+		DirectExt:       ext,
+		CreatedAt:       time.Now(),
+	}
+	if err := srv.store.SaveEpisode(e); err != nil {
+		http.Error(w, "failed to save metadata", http.StatusInternalServerError)
+		return
+	}
+
+	origDir := srv.store.EpisodeOriginalDir(id)
+	if err := os.MkdirAll(origDir, 0755); err != nil {
+		srv.store.DeleteEpisode(id)
+		http.Error(w, "failed to create upload dir", http.StatusInternalServerError)
+		return
+	}
+	origPath := filepath.Join(origDir, "video"+ext)
+	dst, err := os.Create(origPath)
+	if err != nil {
+		srv.store.DeleteEpisode(id)
+		http.Error(w, "failed to write file", http.StatusInternalServerError)
+		return
+	}
+	if _, err := io.Copy(dst, f); err != nil {
+		dst.Close()
+		srv.store.DeleteEpisode(id)
+		http.Error(w, "failed to write file", http.StatusInternalServerError)
+		return
+	}
+	dst.Close()
+
+	// Optional thumbnail
+	if th, thHeader, err := r.FormFile("thumbnail"); err == nil {
+		thExt := strings.ToLower(filepath.Ext(thHeader.Filename))
+		if thExt == "" {
+			thExt = ".jpg"
+		}
+		thumbDir := filepath.Join(srv.store.EpisodeDir(id), "thumbnails")
+		if os.MkdirAll(thumbDir, 0755) == nil {
+			if tdst, err := os.Create(filepath.Join(thumbDir, "card"+thExt)); err == nil {
+				io.Copy(tdst, th)
+				tdst.Close()
+			}
+		}
+		th.Close()
+	}
+
+	e.DirectPath = origPath
+	if err := srv.store.SaveEpisode(e); err != nil {
+		http.Error(w, "failed to update metadata", http.StatusInternalServerError)
+		return
+	}
+
+	if doTranscode {
+		transcode.StartEpisode(srv.store, id, origPath)
+		w.WriteHeader(http.StatusAccepted)
+		jsonResponse(w, map[string]string{"id": id, "status": "transcoding"})
+	} else {
+		w.WriteHeader(http.StatusCreated)
+		jsonResponse(w, map[string]string{"id": id, "status": "ready"})
+	}
+}
+
+// GET /api/episodes/{id}
+func (srv *Server) handleGetEpisode(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	e, err := srv.store.LoadEpisode(id)
+	if err != nil {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	jsonResponse(w, e)
+}
+
+// PUT /api/episodes/{id}
+func (srv *Server) handleUpdateEpisode(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	e, err := srv.store.LoadEpisode(id)
+	if err != nil {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+
+	var body struct {
+		Season   *int   `json:"season"`
+		Number   *int   `json:"number"`
+		Title    string `json:"title"`
+		Synopsis string `json:"synopsis"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if body.Season != nil {
+		e.Season = *body.Season
+	}
+	if body.Number != nil {
+		e.Number = *body.Number
+	}
+	if body.Title != "" {
+		e.Title = body.Title
+	}
+	if body.Synopsis != "" {
+		e.Synopsis = body.Synopsis
+	}
+
+	if err := srv.store.SaveEpisode(e); err != nil {
+		http.Error(w, "failed to save", http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, e)
+}
+
+// DELETE /api/episodes/{id}
+func (srv *Server) handleDeleteEpisode(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := srv.store.DeleteEpisode(id); err != nil {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	os.RemoveAll(srv.store.EpisodeDir(id))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /api/episodes/{id}/thumbnail
+func (srv *Server) handleEpisodeThumbnail(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	thumbDir := filepath.Join(srv.store.EpisodeDir(id), "thumbnails")
+	if serveImageFile(w, r, thumbDir, "card") {
+		return
+	}
+	http.NotFound(w, r)
+}
+
+// POST /api/episodes/{id}/thumbnail
+func (srv *Server) handleUploadEpisodeThumbnail(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := srv.store.LoadEpisode(id); err != nil {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
+	f, fh, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file field", http.StatusBadRequest)
+		return
+	}
+	defer f.Close()
+
+	ext := strings.ToLower(filepath.Ext(fh.Filename))
+	if ext == "" {
+		ext = ".jpg"
+	}
+	thumbDir := filepath.Join(srv.store.EpisodeDir(id), "thumbnails")
+	if err := os.MkdirAll(thumbDir, 0755); err != nil {
+		http.Error(w, "failed to create thumbnail dir", http.StatusInternalServerError)
+		return
+	}
+	dst, err := os.Create(filepath.Join(thumbDir, "card"+ext))
+	if err != nil {
+		http.Error(w, "failed to write thumbnail", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+	io.Copy(dst, f)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /api/episodes/{id}/status
+func (srv *Server) handleEpisodeTranscodeStatus(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	p := srv.store.GetEpisodeProgress(id)
+	if p == nil {
+		e, err := srv.store.LoadEpisode(id)
+		if err != nil {
+			http.Error(w, "episode not found", http.StatusNotFound)
+			return
+		}
+		pct := 0.0
+		if e.TranscodeStatus == store.StatusReady {
+			pct = 100
+		}
+		jsonResponse(w, &store.Progress{Status: e.TranscodeStatus, Progress: pct})
+		return
+	}
+	jsonResponse(w, p)
+}
+
+// POST /api/episodes/{id}/transcode
+func (srv *Server) handleStartEpisodeTranscode(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	e, err := srv.store.LoadEpisode(id)
+	if err != nil {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	if e.StreamReady {
+		jsonResponse(w, map[string]string{"status": "already_ready"})
+		return
+	}
+	if p := srv.store.GetEpisodeProgress(id); p != nil && p.Status == store.StatusTranscoding {
+		jsonResponse(w, map[string]string{"status": "already_transcoding"})
+		return
+	}
+
+	inputPath := e.DirectPath
+	if inputPath == "" {
+		origDir := srv.store.EpisodeOriginalDir(id)
+		entries, err := os.ReadDir(origDir)
+		if err != nil || len(entries) == 0 {
+			http.Error(w, "no source file found", http.StatusBadRequest)
+			return
+		}
+		inputPath = filepath.Join(origDir, entries[0].Name())
+	}
+
+	transcode.StartEpisode(srv.store, id, inputPath)
+	w.WriteHeader(http.StatusAccepted)
+	jsonResponse(w, map[string]string{"status": "transcoding"})
+}
+
+// GET /api/stream/episodes/{id}/* — serve episode HLS files
+func (srv *Server) handleEpisodeHLSFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	rest := chi.URLParam(r, "*")
+
+	if strings.Contains(rest, "..") {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	if rest == "direct" {
+		srv.handleEpisodeDirectStream(w, r)
+		return
+	}
+
+	filePath := filepath.Join(srv.store.EpisodeHLSDir(id), rest)
+	switch {
+	case strings.HasSuffix(rest, ".m3u8"):
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+	case strings.HasSuffix(rest, ".ts"):
+		w.Header().Set("Content-Type", "video/mp2t")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+	}
+	http.ServeFile(w, r, filePath)
+}
+
+// GET /api/stream/episodes/{id}/direct — serve episode source file
+func (srv *Server) handleEpisodeDirectStream(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	e, err := srv.store.LoadEpisode(id)
+	if err != nil {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	if !e.HasDirect() {
+		http.Error(w, "no direct stream available", http.StatusNotFound)
+		return
+	}
+
+	f, err := os.Open(e.DirectPath)
+	if err != nil {
+		http.Error(w, "source file not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		http.Error(w, "stat error", http.StatusInternalServerError)
+		return
+	}
+
+	mime := scanner.MIMEType(e.DirectExt)
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	http.ServeContent(w, r, filepath.Base(e.DirectPath), fi.ModTime(), f)
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

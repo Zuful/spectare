@@ -24,15 +24,28 @@ func Start(s *store.Store, id, inputPath string) {
 func run(s *store.Store, id, inputPath string) {
 	s.SetProgress(id, &store.Progress{Status: store.StatusTranscoding, Progress: 0})
 
-	if err := transcode(s, id, inputPath); err != nil {
+	if err := transcodeToDir(id, inputPath, s.HLSDir(id), s.SetProgress); err != nil {
 		s.SetProgress(id, &store.Progress{Status: store.StatusError, Error: err.Error()})
 		return
 	}
 	s.SetProgress(id, &store.Progress{Status: store.StatusReady, Progress: 100})
 }
 
-func transcode(s *store.Store, id, inputPath string) error {
-	hlsDir := s.HLSDir(id)
+// StartEpisode is like Start but uses episode-specific store methods.
+func StartEpisode(s *store.Store, id, inputPath string) {
+	go runEpisode(s, id, inputPath)
+}
+
+func runEpisode(s *store.Store, id, inputPath string) {
+	s.SetEpisodeProgress(id, &store.Progress{Status: store.StatusTranscoding, Progress: 0})
+	if err := transcodeToDir(id, inputPath, s.EpisodeHLSDir(id), s.SetEpisodeProgress); err != nil {
+		s.SetEpisodeProgress(id, &store.Progress{Status: store.StatusError, Error: err.Error()})
+		return
+	}
+	s.SetEpisodeProgress(id, &store.Progress{Status: store.StatusReady, Progress: 100})
+}
+
+func transcodeToDir(id, inputPath, hlsDir string, progressFn func(string, *store.Progress)) error {
 	for _, q := range []string{"360p", "720p"} {
 		if err := os.MkdirAll(filepath.Join(hlsDir, q), 0755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", q, err)
@@ -68,7 +81,7 @@ func transcode(s *store.Store, id, inputPath string) error {
 			if pct > 99 {
 				pct = 99
 			}
-			s.SetProgress(id, &store.Progress{Status: store.StatusTranscoding, Progress: pct})
+			progressFn(id, &store.Progress{Status: store.StatusTranscoding, Progress: pct})
 		}
 	}
 
