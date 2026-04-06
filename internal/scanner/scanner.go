@@ -104,12 +104,20 @@ func Scan(s *store.Store, dir string, tmdbClient *tmdb.Client) (int, error) {
 		return 0, err
 	}
 
-	// Build a set of already-known DirectPaths to avoid duplicates
+	// Build a set of already-known DirectPaths to avoid duplicates.
+	// Also remove titles whose DirectPath no longer exists on disk (stale entries
+	// left behind after a data directory wipe or drive disconnect).
 	existing, _ := s.List()
 	known := make(map[string]bool, len(existing))
 	knownTitles := make(map[string]*store.Title, len(existing)) // path → title, for companion re-check
 	for _, t := range existing {
 		if t.DirectPath != "" {
+			if _, err := os.Stat(t.DirectPath); os.IsNotExist(err) {
+				// Source file gone — remove the stale entry so it can be re-imported
+				log.Printf("scanner: removing stale title %q (path no longer exists: %s)", t.Title, t.DirectPath)
+				s.Delete(t.ID)
+				continue
+			}
 			known[t.DirectPath] = true
 			knownTitles[t.DirectPath] = t
 		}
