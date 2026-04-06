@@ -1,7 +1,7 @@
 'use client'
 import React, { useEffect, useRef } from 'react'
 import Hls from 'hls.js'
-import { saveProgress, getProgress, markWatched } from '@/lib/watchProgress'
+import { saveProgress, getProgress, markWatched, setLastPlayed } from '@/lib/watchProgress'
 
 type SubTrack = { lang: string; label: string; file: string }
 
@@ -143,7 +143,7 @@ export default function VideoPlayer({
         }
       }}
       onDurationChange={() => onDurationChange(videoRef.current?.duration ?? 0)}
-      onPlay={onPlay}
+      onPlay={() => { setLastPlayed(titleId); onPlay() }}
       onPause={onPause}
       onEnded={onEnded}
       playsInline

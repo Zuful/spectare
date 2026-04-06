@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import NavBar from '@/components/NavBar'
 import Link from 'next/link'
-import { getAllInProgress } from '@/lib/watchProgress'
+import { getAllInProgress, getLastPlayed } from '@/lib/watchProgress'
 
 type TitleData = {
   id: string; title: string; year: number; genre: string[]
@@ -47,7 +47,8 @@ export default function HomePage() {
     }).catch(() => {})
   }, [])
 
-  const featured = titles[0] ?? null
+  const lastPlayedId = getLastPlayed()
+  const featured = (lastPlayedId ? titles.find((t) => t.id === lastPlayedId) : null) ?? titles[0] ?? null
   const movies = titles.filter((t) => t.type === 'movie')
   const series = titles.filter((t) => t.type === 'series' || t.type === 'show')
   const recent = titles.slice(0, 12)

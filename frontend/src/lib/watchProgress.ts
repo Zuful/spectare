@@ -43,6 +43,18 @@ export function unmarkWatched(id: string) {
   localStorage.removeItem(PREFIX_WATCHED + id)
 }
 
+const KEY_LAST_PLAYED = 'spectare-last-played'
+
+export function setLastPlayed(id: string) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(KEY_LAST_PLAYED, id)
+}
+
+export function getLastPlayed(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem(KEY_LAST_PLAYED)
+}
+
 // Returns all IDs with in-progress playback (1%–89% done), newest first
 export function getAllInProgress(): Array<{ id: string } & ProgressEntry> {
   if (typeof window === 'undefined') return []
