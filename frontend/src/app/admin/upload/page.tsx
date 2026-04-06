@@ -119,7 +119,7 @@ export default function UploadPage() {
     } catch (err) {
       setState({ phase: 'error', message: String(err) })
     }
-  }, [file, title, year, titleType, genres, rating, synopsis, director, pollStatus])
+  }, [file, title, year, titleType, genres, rating, synopsis, director, thumbCard, thumbPoster, thumbBackdrop, doTranscode, pollStatus])
 
   const busy = state.phase === 'uploading' || state.phase === 'transcoding'
 
