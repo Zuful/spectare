@@ -67,12 +67,18 @@ func transcodeToDir(id, inputPath, hlsDir string, progressFn func(string, *store
 		return fmt.Errorf("ffmpeg not found — install ffmpeg to enable transcoding: %w", err)
 	}
 
-	scanner := bufio.NewScanner(stderr)
-	for scanner.Scan() {
+	var lastLines []string // keep last 20 lines of stderr for error reporting
+	sc := bufio.NewScanner(stderr)
+	for sc.Scan() {
+		line := sc.Text()
+		lastLines = append(lastLines, line)
+		if len(lastLines) > 20 {
+			lastLines = lastLines[len(lastLines)-20:]
+		}
 		if duration <= 0 {
 			continue
 		}
-		if m := progressRe.FindStringSubmatch(scanner.Text()); m != nil {
+		if m := progressRe.FindStringSubmatch(line); m != nil {
 			h, _ := strconv.ParseFloat(m[1], 64)
 			min, _ := strconv.ParseFloat(m[2], 64)
 			sec, _ := strconv.ParseFloat(m[3], 64)
@@ -86,7 +92,8 @@ func transcodeToDir(id, inputPath, hlsDir string, progressFn func(string, *store
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("ffmpeg: %w", err)
+		log.Printf("ffmpeg failed for %s:\n%s", id, strings.Join(lastLines, "\n"))
+		return fmt.Errorf("ffmpeg exit %w — check server logs for details", err)
 	}
 
 	return writeMasterPlaylist(filepath.Join(hlsDir, "master.m3u8"), hasAudio)
