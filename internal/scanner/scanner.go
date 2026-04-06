@@ -107,9 +107,11 @@ func Scan(s *store.Store, dir string, tmdbClient *tmdb.Client) (int, error) {
 	// Build a set of already-known DirectPaths to avoid duplicates
 	existing, _ := s.List()
 	known := make(map[string]bool, len(existing))
+	knownTitles := make(map[string]*store.Title, len(existing)) // path → title, for companion re-check
 	for _, t := range existing {
 		if t.DirectPath != "" {
 			known[t.DirectPath] = true
+			knownTitles[t.DirectPath] = t
 		}
 	}
 
@@ -223,6 +225,13 @@ func Scan(s *store.Store, dir string, tmdbClient *tmdb.Client) (int, error) {
 		}
 
 		if known[path] {
+			// Already registered — re-check companion files in case they were added later
+			if t, ok := knownTitles[path]; ok {
+				thumbDir := filepath.Join(s.TitleDir(t.ID), "thumbnails")
+				if !existsGlob(thumbDir, "card.*") || !existsGlob(thumbDir, "poster.*") || !existsGlob(thumbDir, "backdrop.*") {
+					importCompanionFiles(s, t.ID, path, d.Name())
+				}
+			}
 			return nil
 		}
 
