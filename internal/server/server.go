@@ -43,6 +43,7 @@ func New(embedded embed.FS, s *store.Store, mediaDir string, tmdb *tmdbclient.Cl
 		r.Post("/titles", srv.handleUpload)
 		r.Get("/titles/{id}", srv.handleGetTitle)
 		r.Put("/titles/{id}", srv.handleUpdateTitle)
+		r.Delete("/titles/{id}", srv.handleDeleteTitle)
 		r.Get("/titles/{id}/status", srv.handleTranscodeStatus)
 		r.Post("/titles/{id}/transcode", srv.handleStartTranscode)
 		r.Get("/titles/{id}/thumbnail", srv.handleThumbnail)          // backward compat → card
@@ -257,6 +258,22 @@ func (srv *Server) handleUpdateTitle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, t)
+}
+
+// DELETE /api/titles/{id} — remove title metadata and all associated files
+func (srv *Server) handleDeleteTitle(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := srv.store.Load(id); err != nil {
+		http.Error(w, "title not found", http.StatusNotFound)
+		return
+	}
+	if err := srv.store.Delete(id); err != nil {
+		http.Error(w, "failed to delete title", http.StatusInternalServerError)
+		return
+	}
+	// Remove all associated files (thumbnails, HLS, original, subtitles, preview)
+	os.RemoveAll(srv.store.TitleDir(id))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GET /api/titles/{id}/status

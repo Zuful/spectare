@@ -15,6 +15,7 @@ type Title = {
 }
 
 type SaveState = 'idle' | 'saving' | 'done' | 'error'
+type DeleteState = 'idle' | 'confirm' | 'deleting'
 
 export default function EditTitleClient({ id: staticId }: { id: string }) {
   // Read real ID from URL (same pattern as WatchClient)
@@ -25,6 +26,7 @@ export default function EditTitleClient({ id: staticId }: { id: string }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [deleteState, setDeleteState] = useState<DeleteState>('idle')
   const [error, setError] = useState('')
 
   const [title, setTitle] = useState('')
@@ -92,6 +94,18 @@ export default function EditTitleClient({ id: staticId }: { id: string }) {
       setSaveState('error')
     }
   }, [id, title, year, titleType, genres, rating, synopsis, director, thumbCard, thumbPoster, thumbBackdrop, router])
+
+  const handleDelete = useCallback(async () => {
+    setDeleteState('deleting')
+    try {
+      const res = await fetch(`/api/titles/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(await res.text())
+      router.push('/browse')
+    } catch (err) {
+      setError(String(err))
+      setDeleteState('idle')
+    }
+  }, [id, router])
 
   const busy = saveState === 'saving'
   const inputCls = `w-full bg-[#1c1b1b] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-[#e5e2e1] text-sm
@@ -211,6 +225,40 @@ export default function EditTitleClient({ id: staticId }: { id: string }) {
             {busy ? 'Saving…' : 'Save changes'}
           </button>
         </form>
+
+        {/* Delete section */}
+        <div className="mt-10 border-t border-[#2a2a2a] pt-6">
+          {deleteState === 'idle' && (
+            <button
+              onClick={() => setDeleteState('confirm')}
+              className="text-sm text-red-400/70 hover:text-red-400 transition-colors"
+            >
+              Delete this title…
+            </button>
+          )}
+          {deleteState === 'confirm' && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+              <p className="text-sm text-red-400 mb-3">This will permanently delete the title, all thumbnails, subtitles and uploaded files. This cannot be undone.</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDelete}
+                  className="bg-red-500 hover:bg-red-600 text-white font-bold px-6 py-2 rounded-full text-sm transition-all active:scale-95"
+                >
+                  Delete permanently
+                </button>
+                <button
+                  onClick={() => setDeleteState('idle')}
+                  className="border border-[#43483d] text-[#8e9285] hover:text-[#e5e2e1] px-6 py-2 rounded-full text-sm transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {deleteState === 'deleting' && (
+            <p className="text-sm text-[#8e9285]">Deleting…</p>
+          )}
+        </div>
       </main>
     </div>
   )
