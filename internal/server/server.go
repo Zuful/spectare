@@ -148,7 +148,12 @@ func New(embedded embed.FS, s *store.Store, mediaDir string, tmdb *tmdbclient.Cl
 		base := strings.TrimSuffix(path, "/index.html")
 		parts := strings.Split(base, "/")
 		for i := len(parts) - 1; i >= 1; i-- {
-			candidate := strings.Join(append(parts[:i], append([]string{"1"}, parts[i+1:]...)...), "/") + "/index.html"
+			// Build candidate without mutating the parts slice (Go append reuses
+			// the backing array when capacity allows, corrupting later iterations).
+			seg := make([]string, len(parts))
+			copy(seg, parts)
+			seg[i] = "1"
+			candidate := strings.Join(seg, "/") + "/index.html"
 			if _, err := fs.Stat(sub, candidate); err == nil {
 				serveFile(w, r, candidate)
 				return
