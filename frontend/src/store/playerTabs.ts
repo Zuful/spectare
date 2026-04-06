@@ -6,12 +6,13 @@ export interface PlayerTab {
   title: string
   thumbnail: string
   currentTime: number
+  streamMode: 'hls' | 'direct' | 'none'
 }
 
 interface PlayerTabsStore {
   tabs: PlayerTab[]
   activeTabId: string | null
-  openTab: (tab: Omit<PlayerTab, 'currentTime'>) => void
+  openTab: (tab: Omit<PlayerTab, 'currentTime' | 'streamMode'> & { streamMode?: 'hls' | 'direct' | 'none' }) => void
   closeTab: (id: string) => void
   setActiveTab: (id: string) => void
   updateCurrentTime: (id: string, time: number) => void
@@ -27,7 +28,7 @@ export const usePlayerTabs = create<PlayerTabsStore>((set, get) => ({
       set({ activeTabId: existing.id })
       return
     }
-    const newTab: PlayerTab = { ...tab, currentTime: 0 }
+    const newTab: PlayerTab = { ...tab, currentTime: 0, streamMode: tab.streamMode ?? 'none' }
     set((s) => ({ tabs: [...s.tabs, newTab], activeTabId: newTab.id }))
   },
 
