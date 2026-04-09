@@ -137,6 +137,11 @@ func Scan(s *store.Store, dir string, tmdbClient *tmdb.Client) (int, error) {
 		}
 	}
 
+	// newSeries tracks series titles created during this scan to avoid duplicates
+	// when multiple episodes from the same series are discovered in the same run.
+	// (existing is loaded once before the walk and would be stale otherwise.)
+	newSeries := make(map[string]*store.Title)
+
 	added := 0
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -176,7 +181,7 @@ func Scan(s *store.Store, dir string, tmdbClient *tmdb.Client) (int, error) {
 			seriesName := filepath.Base(grandparentDir)
 
 			// Find or create a series title
-			seriesTitle, err := findOrCreateSeries(s, seriesName, existing)
+			seriesTitle, err := findOrCreateSeries(s, seriesName, existing, newSeries)
 			if err != nil {
 				log.Printf("scanner: failed to find/create series %q: %v", seriesName, err)
 				return nil
@@ -325,12 +330,21 @@ func enrichFromTMDB(s *store.Store, t *store.Title, client *tmdb.Client) {
 }
 
 // findOrCreateSeries finds an existing series Title by name or creates a new one.
-func findOrCreateSeries(s *store.Store, name string, existing []*store.Title) (*store.Title, error) {
+// newSeries is an in-scan cache that must be checked (and updated) so that multiple
+// episodes discovered in the same scan run share the same series entry.
+func findOrCreateSeries(s *store.Store, name string, existing []*store.Title, newSeries map[string]*store.Title) (*store.Title, error) {
+	// 1. Look in titles that existed before this scan started.
 	for _, t := range existing {
 		if t.Type == "series" && strings.EqualFold(t.Title, name) {
 			return t, nil
 		}
 	}
+	// 2. Look in series created earlier during this same scan run.
+	key := strings.ToLower(name)
+	if t, ok := newSeries[key]; ok {
+		return t, nil
+	}
+	// 3. Create a new series entry and register it in the in-scan cache.
 	t := &store.Title{
 		ID:              newID(),
 		Title:           name,
@@ -340,7 +354,11 @@ func findOrCreateSeries(s *store.Store, name string, existing []*store.Title) (*
 		TranscodeStatus: store.StatusPending,
 		CreatedAt:       time.Now(),
 	}
-	return t, s.Save(t)
+	if err := s.Save(t); err != nil {
+		return nil, err
+	}
+	newSeries[key] = t
+	return t, nil
 }
 
 // importCompanionFiles looks for thumbnail images and subtitle files alongside
