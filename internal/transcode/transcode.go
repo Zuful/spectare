@@ -118,6 +118,7 @@ func buildArgs(inputPath, hlsDir string, hasAudio bool) []string {
 
 	args := []string{
 		"-y",
+		"-fflags", "+genpts",     // regenerate PTS from DTS — fixes MKV timestamp issues
 		"-i", inputPath,
 	}
 
@@ -136,7 +137,10 @@ func buildArgs(inputPath, hlsDir string, hasAudio bool) []string {
 
 	args = append(args,
 		"-c:v", "libx264", "-preset", "fast", "-crf", "23",
-		"-pix_fmt", "yuv420p", // force 8-bit output — browsers don't support 10-bit H.264
+		"-profile:v", "main", "-level:v", "4.0",
+		"-pix_fmt", "yuv420p", // force 8-bit — browsers don't support 10-bit H.264
+		// force keyframes at every segment boundary so HLS seeking works
+		"-force_key_frames", "expr:gte(t,n_forced*4)",
 		"-s:v:0", "640x360", "-b:v:0", "800k",
 		"-s:v:1", "1280x720", "-b:v:1", "2800k",
 	)
@@ -164,9 +168,11 @@ func buildArgs(inputPath, hlsDir string, hasAudio bool) []string {
 }
 
 func writeMasterPlaylist(path string, hasAudio bool) error {
-	codecs := `"avc1.42e01e"`
+	// avc1.4d4028 = H.264 Main profile, level 4.0 (matches -profile:v main -level:v 4.0)
+	// mp4a.40.2  = AAC-LC
+	codecs := `"avc1.4d4028"`
 	if hasAudio {
-		codecs = `"avc1.42e01e,mp4a.40.2"`
+		codecs = `"avc1.4d4028,mp4a.40.2"`
 	}
 	content := fmt.Sprintf(`#EXTM3U
 #EXT-X-VERSION:3

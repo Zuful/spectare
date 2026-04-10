@@ -119,6 +119,19 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When stream is not yet ready, poll status until HLS becomes available.
+  // This handles the case where the user is already on the watch page when transcoding finishes.
+  useEffect(() => {
+    if (streamMode === 'hls') return // already ready
+    const interval = setInterval(() => {
+      fetch(`/api/episodes/${id}/status`)
+        .then(r => r.ok ? r.json() : null)
+        .then(s => { if (s?.status === 'ready') setStreamMode('hls') })
+        .catch(() => {})
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [id, streamMode])
+
   // Load subtitle tracks
   useEffect(() => {
     fetch(`/api/episodes/${id}/subtitles`)
@@ -218,6 +231,7 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
           if (savedTime > 0) video.currentTime = savedTime
         })
         hls.on(Hls.Events.ERROR, (_, data) => {
+          console.error('[HLS]', data.type, data.details, data.fatal, data)
           if (data.fatal) setStreamMode('none')
         })
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
