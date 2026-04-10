@@ -70,6 +70,18 @@ func transcodeToDir(id, inputPath, hlsDir string, progressFn func(string, *store
 
 	var lastLines []string // keep last 20 lines of stderr for error reporting
 	sc := bufio.NewScanner(stderr)
+	// ffmpeg uses \r (not \n) for progress lines when stderr is piped; split on both.
+	sc.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		for i, b := range data {
+			if b == '\r' || b == '\n' {
+				return i + 1, data[:i], nil
+			}
+		}
+		if atEOF && len(data) > 0 {
+			return len(data), data, nil
+		}
+		return 0, nil, nil
+	})
 	for sc.Scan() {
 		line := sc.Text()
 		lastLines = append(lastLines, line)
@@ -124,6 +136,7 @@ func buildArgs(inputPath, hlsDir string, hasAudio bool) []string {
 
 	args = append(args,
 		"-c:v", "libx264", "-preset", "fast", "-crf", "23",
+		"-pix_fmt", "yuv420p", // force 8-bit output — browsers don't support 10-bit H.264
 		"-s:v:0", "640x360", "-b:v:0", "800k",
 		"-s:v:1", "1280x720", "-b:v:1", "2800k",
 	)

@@ -346,8 +346,17 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
 
   const handleCloseTab = useCallback((e: React.MouseEvent, tabId: string) => {
     e.stopPropagation()
+    const isClosingActive = tabId === activeTabId
+    const isLastTab = tabs.length === 1
     closeTab(tabId)
-  }, [closeTab])
+    if (isClosingActive || isLastTab) {
+      if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null }
+      const video = videoRef.current
+      if (video) { video.pause(); video.src = '' }
+      setStreamMode('none')
+      setPlaying(false)
+    }
+  }, [closeTab, activeTabId, tabs])
 
   const handleContainerClick = useCallback(() => {
     if (showSubMenu) { setShowSubMenu(false); return }
