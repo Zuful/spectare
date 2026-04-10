@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -108,6 +109,7 @@ func Scan(s *store.Store, dir string, tmdbClient *tmdb.Client) (int, error) {
 	// Also remove titles whose DirectPath no longer exists on disk (stale entries
 	// left behind after a data directory wipe or drive disconnect).
 	existing, _ := s.List()
+	existing = deduplicateSeries(s, existing)
 	known := make(map[string]bool, len(existing))
 	knownTitles := make(map[string]*store.Title, len(existing)) // path → title, for companion re-check
 	for _, t := range existing {
@@ -124,13 +126,19 @@ func Scan(s *store.Store, dir string, tmdbClient *tmdb.Client) (int, error) {
 	}
 
 	// Build a set of already-known episode DirectPaths
-	// We scan all series titles and their episodes to avoid duplicates
+	// We scan all series titles and their episodes to avoid duplicates.
+	// Also remove any episodes whose source file is a macOS resource-fork sidecar (._*).
 	knownEpisodePaths := make(map[string]bool)
 	for _, t := range existing {
 		if t.Type == "series" {
 			eps, _ := s.ListEpisodes(t.ID)
 			for _, e := range eps {
 				if e.DirectPath != "" {
+					if strings.HasPrefix(filepath.Base(e.DirectPath), ".") {
+						log.Printf("scanner: removing hidden/sidecar episode %q", e.DirectPath)
+						s.DeleteEpisode(e.ID)
+						continue
+					}
 					knownEpisodePaths[e.DirectPath] = true
 				}
 			}
@@ -151,6 +159,11 @@ func Scan(s *store.Store, dir string, tmdbClient *tmdb.Client) (int, error) {
 			if strings.HasPrefix(d.Name(), ".") {
 				return filepath.SkipDir // skip hidden dirs
 			}
+			return nil
+		}
+
+		// Skip hidden files and macOS resource-fork sidecar files (._*)
+		if strings.HasPrefix(d.Name(), ".") {
 			return nil
 		}
 
@@ -327,6 +340,64 @@ func enrichFromTMDB(s *store.Store, t *store.Title, client *tmdb.Client) {
 		s.Save(t)
 	}
 	log.Printf("TMDB: enriched %q (id=%d)", t.Title, result.ID)
+}
+
+// deduplicateSeries merges series entries that share the same title (case-insensitive).
+// It keeps the oldest entry as canonical and re-assigns all episodes from duplicates to it,
+// then deletes the duplicate entries. Returns the updated title list.
+func deduplicateSeries(s *store.Store, existing []*store.Title) []*store.Title {
+	groups := make(map[string][]*store.Title)
+	for _, t := range existing {
+		if t.Type != "series" {
+			continue
+		}
+		key := strings.ToLower(t.Title)
+		groups[key] = append(groups[key], t)
+	}
+
+	merged := false
+	for _, group := range groups {
+		if len(group) <= 1 {
+			continue
+		}
+		// Keep the oldest entry as canonical
+		sort.Slice(group, func(i, j int) bool {
+			return group[i].CreatedAt.Before(group[j].CreatedAt)
+		})
+		canonical := group[0]
+		seenEpisodes := make(map[string]bool) // directPath → already kept
+		// Seed with episodes already on the canonical series
+		if eps, _ := s.ListEpisodes(canonical.ID); len(eps) > 0 {
+			for _, e := range eps {
+				if e.DirectPath != "" {
+					seenEpisodes[e.DirectPath] = true
+				}
+			}
+		}
+		for _, dup := range group[1:] {
+			eps, _ := s.ListEpisodes(dup.ID)
+			for _, e := range eps {
+				if e.DirectPath != "" && seenEpisodes[e.DirectPath] {
+					// True duplicate episode — remove it
+					s.DeleteEpisode(e.ID)
+					continue
+				}
+				e.SeriesID = canonical.ID
+				if err := s.SaveEpisode(e); err == nil && e.DirectPath != "" {
+					seenEpisodes[e.DirectPath] = true
+				}
+			}
+			s.Delete(dup.ID)
+			log.Printf("scanner: merged duplicate series %q (%s) into %s", dup.Title, dup.ID, canonical.ID)
+			merged = true
+		}
+	}
+
+	if !merged {
+		return existing
+	}
+	updated, _ := s.List()
+	return updated
 }
 
 // findOrCreateSeries finds an existing series Title by name or creates a new one.
