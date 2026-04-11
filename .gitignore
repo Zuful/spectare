@@ -1,7 +1,7 @@
-spectare
-frontend/node_modules
-frontend/.next
-frontend/out/*
-!frontend/out/.gitkeep
+backend/spectare
+web/node_modules
+web/.next
+web/out/*
+!web/out/.gitkeep
 .env
 .env.*

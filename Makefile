@@ -1,13 +1,12 @@
 build:
-	cd frontend && npm install && npm run build && cd ..
-	go mod tidy
-	go build -o spectare .
+	cd web && npm install && npm run build && cd ..
+	cd backend && go mod tidy && go build -o spectare . && cd ..
 
 dev-backend:
-	go run .
+	cd backend && go run .
 
-dev-frontend:
-	cd frontend && npm run dev
+dev-web:
+	cd web && npm run dev
 
 clean:
-	rm -f spectare && rm -rf frontend/out frontend/.next
+	rm -f backend/spectare && rm -rf web/out web/.next
