@@ -51,6 +51,8 @@ type Episode struct {
 	DirectExt       string          `json:"directExt,omitempty"`
 	StreamReady     bool            `json:"streamReady"`
 	TranscodeStatus TranscodeStatus `json:"transcodeStatus"`
+	Mp4Ready        bool            `json:"mp4Ready"`
+	Mp4Status       TranscodeStatus `json:"mp4Status"`
 	CreatedAt       time.Time       `json:"createdAt"`
 }
 
@@ -66,11 +68,12 @@ var bucketTitles = []byte("titles")
 var bucketEpisodes = []byte("episodes")
 
 type Store struct {
-	mu              sync.RWMutex
-	dataDir         string
-	db              *bolt.DB
-	progress        map[string]*Progress
-	episodeProgress map[string]*Progress
+	mu                 sync.RWMutex
+	dataDir            string
+	db                 *bolt.DB
+	progress           map[string]*Progress
+	episodeProgress    map[string]*Progress
+	episodeMp4Progress map[string]*Progress
 }
 
 func New(dataDir string) *Store {
@@ -92,10 +95,11 @@ func New(dataDir string) *Store {
 	}
 
 	s := &Store{
-		dataDir:         dataDir,
-		db:              db,
-		progress:        make(map[string]*Progress),
-		episodeProgress: make(map[string]*Progress),
+		dataDir:            dataDir,
+		db:                 db,
+		progress:           make(map[string]*Progress),
+		episodeProgress:    make(map[string]*Progress),
+		episodeMp4Progress: make(map[string]*Progress),
 	}
 	s.importLegacyJSON()
 	return s
@@ -148,6 +152,7 @@ func (s *Store) OriginalDir(id string) string { return filepath.Join(s.TitleDir(
 func (s *Store) EpisodeDir(id string) string         { return filepath.Join(s.dataDir, "episodes", id) }
 func (s *Store) EpisodeHLSDir(id string) string      { return filepath.Join(s.EpisodeDir(id), "hls") }
 func (s *Store) EpisodeOriginalDir(id string) string { return filepath.Join(s.EpisodeDir(id), "original") }
+func (s *Store) EpisodeMp4Path(id string) string     { return filepath.Join(s.EpisodeDir(id), "video.mp4") }
 
 func (s *Store) Delete(id string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
@@ -298,6 +303,10 @@ func (s *Store) LoadEpisode(id string) (*Episode, error) {
 		e.TranscodeStatus = p.Status
 		e.StreamReady = p.Status == StatusReady
 	}
+	if p, ok := s.episodeMp4Progress[id]; ok {
+		e.Mp4Status = p.Status
+		e.Mp4Ready = p.Status == StatusReady
+	}
 	s.mu.RUnlock()
 
 	return &e, nil
@@ -327,6 +336,10 @@ func (s *Store) ListEpisodes(seriesID string) ([]*Episode, error) {
 		if p, ok := s.episodeProgress[e.ID]; ok {
 			e.TranscodeStatus = p.Status
 			e.StreamReady = p.Status == StatusReady
+		}
+		if p, ok := s.episodeMp4Progress[e.ID]; ok {
+			e.Mp4Status = p.Status
+			e.Mp4Ready = p.Status == StatusReady
 		}
 	}
 	s.mu.RUnlock()
@@ -386,6 +399,46 @@ func (s *Store) GetEpisodeProgress(id string) *Progress {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if p, ok := s.episodeProgress[id]; ok {
+		cp := *p
+		return &cp
+	}
+	return nil
+}
+
+func (s *Store) SetEpisodeMp4Progress(id string, p *Progress) {
+	s.mu.Lock()
+	s.episodeMp4Progress[id] = p
+	s.mu.Unlock()
+
+	if p.Status != StatusReady && p.Status != StatusError {
+		return
+	}
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketEpisodes)
+		v := b.Get([]byte(id))
+		if v == nil {
+			return nil
+		}
+		var e Episode
+		if err := json.Unmarshal(v, &e); err != nil {
+			return err
+		}
+		e.Mp4Status = p.Status
+		e.Mp4Ready = p.Status == StatusReady
+		data, err := json.Marshal(&e)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(id), data)
+	}); err != nil {
+		log.Printf("store: SetEpisodeMp4Progress persist: %v", err)
+	}
+}
+
+func (s *Store) GetEpisodeMp4Progress(id string) *Progress {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if p, ok := s.episodeMp4Progress[id]; ok {
 		cp := *p
 		return &cp
 	}

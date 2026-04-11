@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import NavBar from '@/components/NavBar'
 import TranscodeButton from '@/components/TranscodeButton'
+import RemuxButton from '@/components/RemuxButton'
 import { isWatched, getProgress } from '@/lib/watchProgress'
 
 type TitleData = {
@@ -22,6 +23,8 @@ type Episode = {
   directPath?: string
   streamReady: boolean
   transcodeStatus: 'pending' | 'transcoding' | 'ready' | 'error'
+  mp4Ready: boolean
+  mp4Status: string
   createdAt: string
 }
 
@@ -65,7 +68,8 @@ function EpisodeItem({ ep }: { ep: Episode }) {
             <span className="text-sm font-semibold text-[#e5e2e1]">{ep.title}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {!ep.streamReady && (
+            {!ep.mp4Ready && <RemuxButton episodeId={ep.id} />}
+            {!ep.streamReady && ep.mp4Ready && (
               <TranscodeButton titleId={ep.seriesId} episodeId={ep.id} />
             )}
             <Link

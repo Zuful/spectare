@@ -15,7 +15,7 @@ function formatTime(sec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-type StreamMode = 'hls' | 'direct' | 'none'
+type StreamMode = 'hls' | 'mp4' | 'direct' | 'none'
 type SubTrack = { lang: string; label: string; file: string }
 type Episode = { id: string; seriesId: string; season: number; number: number; title: string; synopsis: string; streamReady: boolean; transcodeStatus: string; directPath?: string }
 
@@ -29,6 +29,7 @@ type EpisodeData = {
   directPath?: string
   streamReady: boolean
   transcodeStatus: 'pending' | 'transcoding' | 'ready' | 'error'
+  mp4Ready: boolean
   createdAt: string
 }
 
@@ -91,7 +92,9 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
         setDisplayTitle(computedTitle)
         openTab({ id, titleId: id, title: computedTitle, thumbnail: '' })
 
-        if (data.streamReady) {
+        if (data.mp4Ready) {
+          setStreamMode('mp4')
+        } else if (data.streamReady) {
           setStreamMode('hls')
         } else if (data.directPath) {
           setStreamMode('direct')
@@ -119,14 +122,17 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When stream is not yet ready, poll status until HLS becomes available.
-  // This handles the case where the user is already on the watch page when transcoding finishes.
+  // Poll until MP4 or HLS becomes available (handles transcoding completing while on page)
   useEffect(() => {
-    if (streamMode === 'hls') return // already ready
+    if (streamMode === 'mp4' || streamMode === 'hls') return
     const interval = setInterval(() => {
-      fetch(`/api/episodes/${id}/status`)
+      fetch(`/api/episodes/${id}`)
         .then(r => r.ok ? r.json() : null)
-        .then(s => { if (s?.status === 'ready') setStreamMode('hls') })
+        .then((data: EpisodeData | null) => {
+          if (!data) return
+          if (data.mp4Ready) setStreamMode('mp4')
+          else if (data.streamReady) setStreamMode('hls')
+        })
         .catch(() => {})
     }, 3000)
     return () => clearInterval(interval)
@@ -178,7 +184,9 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
     const baseUrl = window.location.origin
     const mediaUrl = streamMode === 'hls'
       ? `${baseUrl}/api/stream/episodes/${activeEpisodeId}/master.m3u8`
-      : `${baseUrl}/api/stream/episodes/${activeEpisodeId}/direct`
+      : streamMode === 'mp4'
+        ? `${baseUrl}/api/stream/episodes/${activeEpisodeId}/mp4`
+        : `${baseUrl}/api/stream/episodes/${activeEpisodeId}/direct`
     const contentType = streamMode === 'hls' ? 'application/x-mpegURL' : 'video/mp4'
 
     context.requestSession().then(() => {
@@ -240,6 +248,9 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
       } else {
         setStreamMode('none')
       }
+    } else if (streamMode === 'mp4') {
+      video.src = `/api/stream/episodes/${activeEpisodeId}/mp4`
+      if (savedTime > 0) video.addEventListener('loadedmetadata', () => { video.currentTime = savedTime }, { once: true })
     } else if (streamMode === 'direct') {
       video.src = `/api/stream/episodes/${activeEpisodeId}/direct`
       if (savedTime > 0) video.addEventListener('loadedmetadata', () => { video.currentTime = savedTime }, { once: true })
@@ -402,8 +413,11 @@ export default function EpisodeWatchClient({ id: staticId }: { id: string }) {
         {streamMode === 'direct' && (
           <span className="text-[10px] font-mono text-[#454545] ml-2">DIRECT</span>
         )}
+        {streamMode === 'mp4' && (
+          <span className="text-[10px] font-mono text-[var(--color-accent)] ml-2">MP4</span>
+        )}
         {streamMode === 'hls' && (
-          <span className="text-[10px] font-mono text-[var(--color-accent)] ml-2">HLS</span>
+          <span className="text-[10px] font-mono text-[#8e9285] ml-2">HLS</span>
         )}
       </div>
 

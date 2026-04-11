@@ -63,6 +63,9 @@ func New(embedded embed.FS, s *store.Store, mediaDir string, tmdb *tmdbclient.Cl
 		r.Post("/episodes/{id}/thumbnail", srv.handleUploadEpisodeThumbnail)
 		r.Get("/episodes/{id}/status", srv.handleEpisodeTranscodeStatus)
 		r.Post("/episodes/{id}/transcode", srv.handleStartEpisodeTranscode)
+		r.Get("/episodes/{id}/remux/status", srv.handleEpisodeRemuxStatus)
+		r.Post("/episodes/{id}/remux", srv.handleStartEpisodeRemux)
+		r.Get("/stream/episodes/{id}/mp4", srv.handleEpisodeMP4Stream)
 		r.Get("/stream/episodes/{id}/*", srv.handleEpisodeHLSFile)
 		r.Get("/stream/episodes/{id}/direct", srv.handleEpisodeDirectStream)
 		r.Post("/titles/{id}/fetch-metadata", srv.handleFetchMetadata)
@@ -1188,6 +1191,92 @@ func (srv *Server) handleStartEpisodeTranscode(w http.ResponseWriter, r *http.Re
 	transcode.StartEpisode(srv.store, id, inputPath)
 	w.WriteHeader(http.StatusAccepted)
 	jsonResponse(w, map[string]string{"status": "transcoding"})
+}
+
+// GET /api/episodes/{id}/remux/status
+func (srv *Server) handleEpisodeRemuxStatus(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	p := srv.store.GetEpisodeMp4Progress(id)
+	if p == nil {
+		e, err := srv.store.LoadEpisode(id)
+		if err != nil {
+			http.Error(w, "episode not found", http.StatusNotFound)
+			return
+		}
+		pct := 0.0
+		if e.Mp4Ready {
+			pct = 100
+		}
+		jsonResponse(w, &store.Progress{Status: e.Mp4Status, Progress: pct})
+		return
+	}
+	jsonResponse(w, p)
+}
+
+// POST /api/episodes/{id}/remux — remux to MP4 (fast: video copy, audio → AAC)
+func (srv *Server) handleStartEpisodeRemux(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	e, err := srv.store.LoadEpisode(id)
+	if err != nil {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	if e.Mp4Ready {
+		jsonResponse(w, map[string]string{"status": "already_ready"})
+		return
+	}
+	if p := srv.store.GetEpisodeMp4Progress(id); p != nil && p.Status == store.StatusTranscoding {
+		jsonResponse(w, map[string]string{"status": "already_remuxing"})
+		return
+	}
+
+	inputPath := e.DirectPath
+	if inputPath == "" {
+		origDir := srv.store.EpisodeOriginalDir(id)
+		entries, err := os.ReadDir(origDir)
+		if err != nil || len(entries) == 0 {
+			http.Error(w, "no source file found", http.StatusBadRequest)
+			return
+		}
+		inputPath = filepath.Join(origDir, entries[0].Name())
+	}
+
+	transcode.RemuxEpisode(srv.store, id, inputPath)
+	w.WriteHeader(http.StatusAccepted)
+	jsonResponse(w, map[string]string{"status": "remuxing"})
+}
+
+// GET /api/stream/episodes/{id}/mp4 — serve the remuxed MP4 with Range support
+func (srv *Server) handleEpisodeMP4Stream(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	e, err := srv.store.LoadEpisode(id)
+	if err != nil {
+		http.Error(w, "episode not found", http.StatusNotFound)
+		return
+	}
+	if !e.Mp4Ready {
+		http.Error(w, "mp4 not ready", http.StatusNotFound)
+		return
+	}
+
+	mp4Path := srv.store.EpisodeMp4Path(id)
+	f, err := os.Open(mp4Path)
+	if err != nil {
+		http.Error(w, "mp4 file not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		http.Error(w, "stat error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	http.ServeContent(w, r, "video.mp4", fi.ModTime(), f)
 }
 
 // GET /api/stream/episodes/{id}/* — serve episode HLS files

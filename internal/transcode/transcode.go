@@ -46,6 +46,91 @@ func runEpisode(s *store.Store, id, inputPath string) {
 	s.SetEpisodeProgress(id, &store.Progress{Status: store.StatusReady, Progress: 100})
 }
 
+// RemuxEpisode remuxes the episode source to a browser-compatible MP4 file.
+// The video stream is copied as-is (no re-encode), only the audio is converted
+// to AAC — making this much faster than a full HLS transcode.
+func RemuxEpisode(s *store.Store, id, inputPath string) {
+	go func() {
+		s.SetEpisodeMp4Progress(id, &store.Progress{Status: store.StatusTranscoding, Progress: 0})
+
+		outPath := s.EpisodeMp4Path(id)
+		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+			s.SetEpisodeMp4Progress(id, &store.Progress{Status: store.StatusError, Error: err.Error()})
+			return
+		}
+
+		duration, _ := probeDuration(inputPath)
+		hasAudio := probeHasAudio(inputPath)
+
+		args := []string{
+			"-y",
+			"-fflags", "+genpts",
+			"-i", inputPath,
+			"-c:v", "copy", // no video re-encode — fast
+		}
+		if hasAudio {
+			args = append(args, "-c:a", "aac", "-b:a", "192k")
+		}
+		args = append(args,
+			"-movflags", "+faststart", // put moov atom at front for progressive download
+			outPath,
+		)
+
+		cmd := exec.Command("ffmpeg", args...)
+		cmd.Stdout = io.Discard
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			s.SetEpisodeMp4Progress(id, &store.Progress{Status: store.StatusError, Error: err.Error()})
+			return
+		}
+		if err := cmd.Start(); err != nil {
+			s.SetEpisodeMp4Progress(id, &store.Progress{Status: store.StatusError, Error: "ffmpeg not found: " + err.Error()})
+			return
+		}
+
+		var lastLines []string
+		sc := bufio.NewScanner(stderr)
+		sc.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+			for i, b := range data {
+				if b == '\r' || b == '\n' {
+					return i + 1, data[:i], nil
+				}
+			}
+			if atEOF && len(data) > 0 {
+				return len(data), data, nil
+			}
+			return 0, nil, nil
+		})
+		for sc.Scan() {
+			line := sc.Text()
+			lastLines = append(lastLines, line)
+			if len(lastLines) > 20 {
+				lastLines = lastLines[len(lastLines)-20:]
+			}
+			if duration > 0 {
+				if m := progressRe.FindStringSubmatch(line); m != nil {
+					h, _ := strconv.ParseFloat(m[1], 64)
+					min, _ := strconv.ParseFloat(m[2], 64)
+					sec, _ := strconv.ParseFloat(m[3], 64)
+					elapsed := h*3600 + min*60 + sec
+					pct := (elapsed / duration) * 100
+					if pct > 99 {
+						pct = 99
+					}
+					s.SetEpisodeMp4Progress(id, &store.Progress{Status: store.StatusTranscoding, Progress: pct})
+				}
+			}
+		}
+
+		if err := cmd.Wait(); err != nil {
+			log.Printf("ffmpeg remux failed for %s:\n%s", id, strings.Join(lastLines, "\n"))
+			s.SetEpisodeMp4Progress(id, &store.Progress{Status: store.StatusError, Error: "ffmpeg exit: " + err.Error()})
+			return
+		}
+		s.SetEpisodeMp4Progress(id, &store.Progress{Status: store.StatusReady, Progress: 100})
+	}()
+}
+
 func transcodeToDir(id, inputPath, hlsDir string, progressFn func(string, *store.Progress)) error {
 	for _, q := range []string{"360p", "720p"} {
 		if err := os.MkdirAll(filepath.Join(hlsDir, q), 0755); err != nil {
