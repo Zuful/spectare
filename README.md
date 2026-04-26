@@ -16,8 +16,9 @@ Dark, cinematic UI inspired by Netflix/Disney+/Prime Video, built around a match
 
 ## Requirements
 
-- **Go** 1.19+
+- **Go** 1.21+
 - **Node.js** 18+ and **npm**
+- **Flutter** 3.x (mobile only)
 - **ffmpeg** + **ffprobe** (for HLS transcoding and preview generation)
 
 ## Build
@@ -31,8 +32,9 @@ Compiles the Next.js frontend to a static export and embeds it into a single Go 
 Without make:
 
 ```bash
-cd frontend && npm install && npm run build && cd ..
-go build -o spectare .
+cd web && npm install && npm run build && cd ..
+mkdir -p backend/frontend && cp -r web/out backend/frontend/out
+cd backend && go build -o spectare . && cd ..
 ```
 
 ## Run
@@ -90,7 +92,7 @@ If `TMDB_API_KEY` is set, newly scanned titles are automatically enriched in the
 make dev-backend
 
 # Terminal 2 — Next.js with hot reload
-make dev-frontend
+make dev-web
 ```
 
 The Next.js dev server proxies `/api` to `localhost:8766`.
@@ -107,7 +109,7 @@ The Next.js dev server proxies `/api` to `localhost:8766`.
 | Transcoding | ffmpeg → HLS segments (360p + 720p) |
 | Preview generation | ffmpeg → 30s MP4 clip (auto on upload) |
 | Storage | Local filesystem |
-| Mobile | React Native / Expo *(coming soon)* |
+| Mobile | Flutter (Android + iOS) |
 
 ## Workflow
 
